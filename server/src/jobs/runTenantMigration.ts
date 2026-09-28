@@ -5,14 +5,10 @@ import { seedOrganization } from "./seedSuperAdmin.js";
 const run = async (): Promise<void> => {
   const backupDirectory = await createDatabaseBackup(process.argv[2]);
   console.log(`Pre-migration backup completed: ${backupDirectory}`);
-  const { defaultTenantId } = await connectDatabase({ migrateTenants: true });
+  const { defaultTenantId } = await connectDatabase();
   try {
-    // Reconnect after index reconciliation so seeding never reuses a connection
-    // affected by a long-running index command.
-    await disconnectDatabase();
-    await connectDatabase();
     await seedOrganization(defaultTenantId);
-    console.log("Tenant migration completed successfully");
+    console.log("PostgreSQL schema initialization completed successfully");
   } finally {
     await disconnectDatabase();
   }

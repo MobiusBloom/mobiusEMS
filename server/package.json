@@ -17,6 +17,7 @@
     "verify:preservation": "tsx src/jobs/verifyMigrationPreservation.ts",
     "restore:migration-metadata": "tsx src/jobs/restoreMigrationMetadata.ts",
     "migrate:tenants": "tsx src/jobs/runTenantMigration.ts",
+    "migrate:mongo": "tsx src/jobs/migrateMongoToPostgres.ts",
     "test": "tsx --test src/**/*.test.ts"
   },
   "dependencies": {
@@ -43,10 +44,12 @@
     "helmet": "^8.1.0",
     "jsonwebtoken": "^9.0.2",
     "mammoth": "^1.12.2",
+    "mongodb": "^7.6.0",
     "mongoose": "^8.16.4",
     "multer": "^2.0.2",
     "nodemailer": "^10.0.0",
     "pdf-parse": "^1.1.1",
+    "pg": "^8.23.0",
     "read-excel-file": "^9.3.10",
     "tsx": "^4.20.3",
     "typescript": "^5.8.3",
@@ -54,6 +57,7 @@
     "zod": "^3.25.76"
   },
   "devDependencies": {
-    "@types/nodemailer": "^8.0.1"
+    "@types/nodemailer": "^8.0.1",
+    "@types/pg": "^8.23.1"
   }
 }

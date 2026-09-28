@@ -1,4 +1,5 @@
-import { Schema, model, type Types } from "mongoose";
+import { Schema, type Types } from "mongoose";
+import { postgresModel } from "../persistence/postgresModel.js";
 import {
   PLAN_TIERS,
   SUBSCRIPTION_STATUSES,
@@ -89,5 +90,5 @@ const schema = new Schema<TenantDocument>({
 }, { timestamps: true });
 
 schema.index({ status: 1, subscriptionStatus: 1, createdAt: -1 });
-export const Tenant = model<TenantDocument>("Tenant", schema);
+export const Tenant = postgresModel<TenantDocument>("Tenant", schema);
 

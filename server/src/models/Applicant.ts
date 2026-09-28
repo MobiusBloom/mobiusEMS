@@ -20,7 +20,7 @@ export interface ApplicantRecord {
   stage: ApplicantStage;
   stageNotes: StageNote[];
   originalName: string;
-  storageProvider: "CLOUDINARY" | "MONGODB";
+  storageProvider: "CLOUDINARY" | "POSTGRESQL";
   storageKey: string;
   format?: string;
   mimeType: string;
@@ -49,7 +49,7 @@ const applicantSchema = new Schema<ApplicantRecord>({
   stage: { type: String, enum: APPLICANT_STAGES, default: "SOURCED", index: true },
   stageNotes: { type: [stageNoteSchema], default: [] },
   originalName: { type: String, required: true, maxlength: 255 },
-  storageProvider: { type: String, enum: ["CLOUDINARY", "MONGODB"], required: true },
+  storageProvider: { type: String, enum: ["CLOUDINARY", "POSTGRESQL"], required: true },
   storageKey: { type: String, required: true, unique: true },
   format: String,
   mimeType: { type: String, required: true, maxlength: 120 },

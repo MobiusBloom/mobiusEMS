@@ -2,49 +2,43 @@
 
 ## Isolation model
 
-Every business collection contains an immutable `tenantId`. Mongoose middleware adds the active tenant to reads, writes, updates, deletes, aggregates, inserts and bulk operations. An operation without request-scoped tenant context fails closed. `Tenant` and the permission catalog are the only global collections.
+Every tenant-owned PostgreSQL row contains a non-null `tenant_id`, and the same identifier is retained inside its JSONB document. The PostgreSQL model adapter adds the active tenant to reads, writes, updates, deletes, aggregates, inserts, and bulk operations. An operation without request-scoped tenant context fails closed. `Tenant`, `Permission`, and system migration records are global models.
 
-Unique business keys are tenant-local. For example, two organizations may use the same user email, employee ID, department code, project code or skill name. All query indexes lead with `tenantId`; TTL indexes remain single-field as required by MongoDB.
+Unique business keys are tenant-local. Two organizations may therefore use the same user email, employee ID, department code, project code, or skill name. Tenant-leading PostgreSQL indexes enforce those boundaries.
 
-JWT access and refresh tokens carry the tenant ID. Tokens created before this change continue to work because the server resolves their migrated user/session record once and then issues a tenant-aware token. A suspended organization is rejected on every authenticated request.
+JWT access and refresh tokens carry the tenant ID. A suspended organization is rejected on every authenticated request. PostgreSQL fallback file storage keeps binary content in `binary_objects` with a required `tenant_id`; Cloudinary uploads continue to use tenant-prefixed folders.
 
-GridFS files store `metadata.tenantId` and are checked before read or deletion. Cloudinary uploads use a tenant-prefixed folder.
+## PostgreSQL setup
 
-## Existing-data migration
-
-Before the first startup, run `npm run migrate:tenants`. This command creates a complete compressed Extended JSON backup under `.runtime/backups/` before it changes the database. The migration then:
-
-1. Creates the default tenant from `DEFAULT_TENANT_NAME` and `DEFAULT_TENANT_SLUG`.
-2. Adds that tenant ID only to records where `tenantId` is missing or null.
-3. Adds the same tenant metadata to existing GridFS files.
-4. Replaces global unique indexes with tenant-leading compound unique indexes.
-5. Builds tenant-leading read indexes.
-6. Seeds missing organization presets without overwriting existing records.
-
-The migration does not change `_id`, email, password hashes, employee data or stored file IDs. It is idempotent and safe to rerun. Normal startup refuses to serve an unmigrated database, preventing an accidental unbacked conversion.
-
-After migration, compare every backed-up document with the live database (allowing only the new tenant marker) using:
+For local development:
 
 ```bash
-npm run verify:preservation -- .runtime/backups/before-tenant-migration-<timestamp>
+npm run db:up
+npm run seed
 ```
 
-For an additional provider-native backup, use:
+The first application or seed startup creates all model tables, JSONB indexes, unique business-key indexes, the binary object table, and the default tenant. Startup is idempotent and does not overwrite existing organization data.
+
+To migrate an existing MongoDB deployment, temporarily set `MONGODB_MIGRATION_URI` and run:
 
 ```bash
-mongodump --uri="$MONGODB_URI" --archive=employee-before-tenancy.archive --gzip
+npm run migrate:mongo
 ```
 
-Deploy during a maintenance window or with the old application instances drained. Do not run old and new application versions against the database at the same time while indexes are being converted. The built-in backup contains sensitive records and password hashes; keep `.runtime/backups` access restricted and move the archive to encrypted storage after verification.
+The migration upserts records and GridFS objects by their original identifiers, validates destination counts, and can be rerun. Keep the old application drained during the final transfer. Retain a provider-native MongoDB backup until the PostgreSQL verification and application smoke tests are complete, then remove the migration credential.
+
+See [POSTGRESQL_MIGRATION.md](POSTGRESQL_MIGRATION.md) for the complete cutover and rollback procedure.
 
 ## Configuration
 
 ```dotenv
+DATABASE_URL=postgresql://app_user:strong-password@database-host:5432/mobius_ems
+POSTGRES_MIN_POOL_SIZE=2
+POSTGRES_MAX_POOL_SIZE=30
+POSTGRES_SSL=true
 DEFAULT_TENANT_NAME=MobiusEMS
 DEFAULT_TENANT_SLUG=mobius-ems
 PLATFORM_ADMIN_EMAILS=owner@example.com
-MONGODB_MIN_POOL_SIZE=2
-MONGODB_MAX_POOL_SIZE=30
 EMAIL_AUTOMATION_ENABLED=true
 ```
 
@@ -58,15 +52,16 @@ An allowlisted platform owner can use **Administration → Vendor organizations*
 - `POST /api/v1/platform/tenants`
 - `PATCH /api/v1/platform/tenants/:id/status`
 
-Provisioning creates tenant-local roles, starter departments/designations and a tenant Super Admin. The new administrator must change the temporary password on first sign-in. Suspending a tenant immediately blocks access but retains all records for later reactivation.
+Provisioning creates tenant-local roles, starter departments/designations, and a tenant Super Admin. The new administrator must change the temporary password on first sign-in. Suspending a tenant immediately blocks access but retains all records for later reactivation.
 
 ## Operational checks
 
 After deployment:
 
-1. Confirm startup logs contain `MongoDB connected and tenant migration verified`.
-2. Sign in to the original account without an Organization ID and verify historical records.
-3. Provision a test organization and sign in using its Organization ID.
-4. Create the same department or employee email in both organizations to confirm tenant-local uniqueness.
-5. Suspend the test organization and confirm its existing session receives `401`.
-6. Monitor MongoDB connection-pool saturation and tune the configured min/max pool sizes for the deployment size.
+1. Confirm startup logs contain `PostgreSQL connected and schema verified`.
+2. Confirm `GET /api/health` reports `database: connected`.
+3. Sign in to the original account without an Organization ID and verify historical records.
+4. Provision a test organization and sign in using its Organization ID.
+5. Create the same department or employee email in both organizations to confirm tenant-local uniqueness.
+6. Suspend the test organization and confirm its existing session receives `401`.
+7. Monitor PostgreSQL connection usage and tune the configured pool limits for the deployment size.

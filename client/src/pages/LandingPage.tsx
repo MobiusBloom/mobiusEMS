@@ -457,7 +457,7 @@ export const LandingPage = () => {
                 <div className="lp-skill-chips">
                   <span className="lp-chip-match"><Check size={10}/> React & TypeScript</span>
                   <span className="lp-chip-match"><Check size={10}/> Node.js & Microservices</span>
-                  <span className="lp-chip-match"><Check size={10}/> MongoDB & Indexing</span>
+                  <span className="lp-chip-match"><Check size={10}/> PostgreSQL & Indexing</span>
                   <span className="lp-chip-miss">! AWS Solution Architect Cert</span>
                 </div>
                 <div className="lp-human-advisory">
@@ -620,7 +620,7 @@ export const LandingPage = () => {
                 <div className="lp-skill-chips">
                   <span className="lp-chip-match"><Check size={10}/> React & TypeScript</span>
                   <span className="lp-chip-match"><Check size={10}/> Node.js & Express</span>
-                  <span className="lp-chip-match"><Check size={10}/> MongoDB & Aggregations</span>
+                  <span className="lp-chip-match"><Check size={10}/> PostgreSQL & Analytics</span>
                   <span className="lp-chip-miss">! System Design Cert Required</span>
                 </div>
               </div>

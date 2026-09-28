@@ -1,0 +1,20 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-mobius_ems}
+      POSTGRES_USER: ${POSTGRES_USER:-mobius}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-mobius}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - mobius_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+volumes:
+  mobius_postgres_data:

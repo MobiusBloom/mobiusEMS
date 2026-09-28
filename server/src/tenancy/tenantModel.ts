@@ -1,5 +1,4 @@
 import {
-  model,
   type AnyBulkWriteOperation,
   type Model,
   type Query,
@@ -8,6 +7,7 @@ import {
   type Types,
 } from "mongoose";
 import { isSystemContext, requireTenantId, TenantContextError } from "./tenantContext.js";
+import { postgresModel } from "../persistence/postgresModel.js";
 
 export interface TenantScopedDocument { tenantId: Types.ObjectId }
 
@@ -147,7 +147,7 @@ const applyTenantPlugin = (schema: Schema): void => {
 
 export const tenantModel = <T>(name: string, schema: Schema<T>): Model<T> => {
   applyTenantPlugin(schema);
-  const compiled = model<T>(name, schema);
+  const compiled = postgresModel<T>(name, schema, true);
   tenantModels.add(compiled as Model<unknown>);
   return compiled;
 };

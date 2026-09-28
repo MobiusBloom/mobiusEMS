@@ -16,7 +16,7 @@ MobiusEMS is the flagship employee management product of Mobius Bloom Venture Pv
 
 ## Technology
 
-React, TypeScript, Vite, Tailwind CSS, shadcn-style primitives, TanStack Query, React Hook Form, Zod, Recharts, Lucide, Express, Mongoose, MongoDB Atlas, JWT, bcrypt, Cloudinary authenticated assets, Helmet, restricted CORS, origin checks, and rate limiting.
+React, TypeScript, Vite, Tailwind CSS, shadcn-style primitives, TanStack Query, React Hook Form, Zod, Recharts, Lucide, Express, PostgreSQL 16, `pg`, a tenant-safe document compatibility layer, JWT, bcrypt, Cloudinary authenticated assets, Helmet, restricted CORS, origin checks, and rate limiting.
 
 ## Structure
 
@@ -33,12 +33,13 @@ See [docs/sales-workflow.md](docs/sales-workflow.md) for the role boundaries and
 
 ## Local installation
 
-Requirements: Node.js 20+, npm 10+, and MongoDB 7+ (local or Atlas).
+Requirements: Node.js 20+, npm 10+, and Docker Desktop (or PostgreSQL 16+).
 
 1. Copy `.env.example` to `.env`.
-2. Set `MONGODB_URI`, two different random JWT secrets of at least 32 characters, and the initial Super Admin values.
+2. Set `DATABASE_URL`, two different random JWT secrets of at least 32 characters, and the initial Super Admin values.
 3. Run `npm install`.
-4. Run `npm run seed` to create permissions, system roles, and the Super Admin.
+4. Run `npm run db:up` and wait for the PostgreSQL health check.
+5. Run `npm run seed` to create permissions, system roles, and the Super Admin.
 6. Run `npm run dev` and open `http://localhost:5173`.
 
 ### Free local voice transcription
@@ -61,14 +62,22 @@ The voice interface supports automatic detection plus explicit selection for Eng
 - `npm run build`, `npm start`
 - `npm run typecheck`, `npm run lint`
 - `npm run seed`
+- `npm run db:up`, `npm run db:down`, `npm run db:logs`
+- `npm run migrate:mongo` for the one-time MongoDB-to-PostgreSQL transfer
 
-## MongoDB Atlas
+## PostgreSQL
 
-Create a dedicated least-privilege database user, allow only development and Hostinger egress addresses, require TLS, and use the SRV connection string as `MONGODB_URI`. Models use references for growing history collections and indexes for employee IDs, email, organization scope, skills, task status/deadlines, projects, and timestamps.
+Local development uses PostgreSQL 16 through `compose.yaml`. Application records are stored in one PostgreSQL table per domain model with an indexed JSONB document, stable 24-character identifiers, tenant-leading indexes, and database-enforced unique business keys. This preserves the existing API and service contracts while removing MongoDB as a runtime dependency. Binary fallback storage uses the `binary_objects` PostgreSQL table.
+
+For production, create a least-privilege PostgreSQL database, require TLS, restrict network access to the application host, set `DATABASE_URL`, and set `POSTGRES_SSL=true`. Back up the database with the hosting provider's snapshots and `pg_dump`.
+
+### Existing MongoDB data
+
+Set `MONGODB_MIGRATION_URI` temporarily and run `npm run migrate:mongo`. The migration is resumable: records and GridFS files are upserted by their existing identifiers. Remove the MongoDB migration credential after verification. See [the PostgreSQL migration runbook](docs/POSTGRESQL_MIGRATION.md).
 
 ## Private documents
 
-Configure the Cloudinary variables to enable uploads. Files are stored as authenticated resources with randomized keys; the database stores only metadata and storage keys. Download links are signed after backend scope checks. MIME type and size are validated before upload. Never place employee files under `client/public` or another predictable public folder.
+Configure the Cloudinary variables to enable external uploads. Files are stored as authenticated resources with randomized keys and signed downloads. If Cloudinary is unavailable, private files are stored in PostgreSQL `bytea` records scoped by tenant. MIME type and size are validated before upload. Never place employee files under `client/public` or another predictable public folder.
 
 ## Production deployment on Hostinger
 
@@ -90,7 +99,7 @@ AI requests are rate-limited, role-scoped, and audit logged. Employee contributi
 
 Access and refresh tokens use HttpOnly cookies; production cookies are Secure and SameSite Strict. Refresh tokens rotate and reuse invalidates the session family. Mutations require an allowed origin. Backend middleware enforces every permission and business services enforce employee/manager scope. Passwords use bcrypt and are never returned except the one-time generated temporary credential. Sensitive actions are audit logged. Production errors do not expose stacks.
 
-Before launch, rotate seed credentials, use high-entropy secrets, configure Atlas and storage backups, test restoration, restrict Hostinger environment access, and run `npm run typecheck`, `npm run lint`, and `npm run build` in CI.
+Before launch, rotate seed credentials, use high-entropy secrets, configure PostgreSQL and storage backups, test restoration, restrict Hostinger environment access, and run `npm run typecheck`, `npm run lint`, and `npm run build` in CI.
 
 See [architecture](docs/ARCHITECTURE.md) and [schema reference](docs/SCHEMA.md).
 

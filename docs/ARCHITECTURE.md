@@ -6,7 +6,7 @@ MobiusEMS is an independent enterprise-grade workforce capability, work delivery
 
 - **Autonomous Runtime**: MobiusEMS runs on Node.js 20+ and Express 4. It does not share memory, filesystem, or database infrastructure with the legacy Laravel application at `whalexy.com`.
 - **API & SPA Topology**: In production, the Express server hosts the REST API mounted under `/api/v1/*` and statically serves the production-compiled React 19 SPA (`client/dist`) with an immutable client-side asset caching strategy and single-page application (SPA) routing fallback.
-- **Tenant Boundary**: Multi-tenancy is enforced at the persistence layer using a central fail-closed Mongoose model wrapper and Node.js `AsyncLocalStorage`. Every database query, aggregation, mutation, and background job is strictly bound to the authenticated tenant.
+- **Tenant Boundary**: Multi-tenancy is enforced by a central fail-closed PostgreSQL persistence wrapper and Node.js `AsyncLocalStorage`. Every database query, aggregation, mutation, and background job is strictly bound to the authenticated tenant.
 
 ## 2. Monorepo Structure & Package Responsibilities
 
@@ -34,7 +34,8 @@ mobius-ems/
 │   │   ├── data/               Preset catalogs, role definitions, and seed data
 │   │   ├── jobs/               Database migrations, backups, and integrity verification
 │   │   ├── middleware/         Authentication, RBAC, Helmet, CORS, rate limits, validation
-│   │   ├── models/             62 Mongoose domain models with fail-closed tenant scoping
+│   │   ├── models/             76 domain models with fail-closed tenant scoping
+│   │   ├── persistence/        PostgreSQL pool, schema sync, query compatibility layer
 │   │   ├── routes/             19 versioned route modules mounted under `/api/v1`
 │   │   ├── services/           54 domain business services, scoring math, AI, and STT
 │   │   ├── tenancy/            AsyncLocalStorage context, model wrappers, migration engine
@@ -85,7 +86,7 @@ flowchart TB
     end
 
     subgraph PersistenceLayer ["Persistence & External Infrastructure"]
-        MongoDB[("MongoDB Atlas (62 Tenant-Scoped Collections)")]
+        PostgreSQL[("PostgreSQL 16 (76 Model Tables + Binary Storage)")]
         LocalWhisper["faster-whisper (Local Server-Side STT)"]
         Cloudinary["Cloudinary (Private Authenticated Files)"]
         BrevoAPI["Brevo API / Nodemailer (SMTP Gateway)"]
@@ -97,7 +98,7 @@ flowchart TB
     ServiceLayer --> PersistenceLayer
 ```
 
-## 4. Comprehensive Domain & Model Map (62 Models)
+## 4. Comprehensive Domain & Model Map (76 Models)
 
 Every business collection enforces an immutable `tenantId` leading compound index, soft-deletion timestamps (`isActive`, `archivedAt`, `deletedAt`), and strict service-level field allowlisting:
 
@@ -149,13 +150,13 @@ The Express router (`server/src/routes/index.ts`) mounts 19 modular route contro
 Multi-tenancy in MobiusEMS is implemented as an architectural invariant, not an optional filter:
 
 1. **AsyncLocalStorage Execution Context**: When a request arrives, authentication middleware verifies the JWT and establishes a request-isolated context containing `tenantId` and `isPlatformAdmin`.
-2. **Fail-Closed Mongoose Model Wrapper**: Every tenant-owned model is registered through `withTenancy()`. The wrapper intercepts:
+2. **Fail-Closed PostgreSQL Model Wrapper**: Every tenant-owned model is registered through `tenantModel()`. The wrapper intercepts:
    - Queries (`find`, `findOne`, `countDocuments`): Automatically appends `{ tenantId }` to the query predicate. Conflicting tenant IDs provided in parameters trigger a fail-closed exception.
    - Mutations (`updateOne`, `updateMany`, `findOneAndUpdate`, `deleteMany`): Injects `{ tenantId }` into the query filter.
    - Insertions (`save`, `insertMany`): Injects `tenantId` into document payloads prior to validation.
-   - Aggregations (`aggregate`): Automatically prepends a `$match: { tenantId }` pipeline stage as stage 0.
-   - Direct Object Access (IDOR Prevention): Cross-tenant access by raw MongoDB `_id` is fundamentally rejected because queries always evaluate `_id AND tenantId`.
-3. **Tenant-Local Uniqueness**: Unique business identifiers (email, employee ID, project code, department code, customer email) are indexed with tenant-leading compound unique indexes: `{ tenantId: 1, email: 1 }`.
+   - Aggregations (`aggregate`): Executes against tenant-filtered PostgreSQL rows before applying compatibility pipeline stages.
+   - Direct Object Access (IDOR Prevention): Cross-tenant access by raw record ID is rejected because queries always evaluate `id AND tenant_id`.
+3. **Tenant-Local Uniqueness**: Unique business identifiers (email, employee ID, project code, department code, customer email) use tenant-leading PostgreSQL unique expression indexes over validated JSONB fields.
 4. **Global Platform Entities**: Only `Tenant` and `Permission` bypass tenant scoping. Access to `/api/v1/platform/*` endpoints requires the `SUPER_ADMIN` role and email allowlisting in `PLATFORM_ADMIN_EMAILS`.
 
 ## 7. AI & Voice Architecture
@@ -190,4 +191,4 @@ To eliminate algorithmic hallucination and ensure audit compliance, all core sco
 - **Session Security**: Dual-token pattern using HttpOnly, Secure, SameSite=Strict cookies. Refresh tokens rotate upon renewal; reuse attempts invalidate the entire session family.
 - **Origin Guard**: `verifyRequestOrigin` middleware validates mutating HTTP requests against `CLIENT_URL` to block Cross-Site Request Forgery (CSRF).
 - **Private Document Management**: Uploads are stored in Cloudinary as authenticated private assets with cryptographically random identifiers. Download URLs are short-lived and signed only after backend authorization checks.
-- **Immutable Audit Trail**: The `AuditLog` collection records actor identity, IP, user agent, target entity, action type, and diff snapshots. No update or delete endpoints exist in the application.
+- **Immutable Audit Trail**: The `AuditLog` table records actor identity, IP, user agent, target entity, action type, and diff snapshots. No update or delete endpoints exist in the application.

@@ -4,7 +4,6 @@ import { createInterface } from "node:readline";
 import { createGunzip } from "node:zlib";
 import path from "node:path";
 import mongoose from "mongoose";
-import { env } from "../config/env.js";
 import { verifyDatabaseBackup } from "./backupDatabase.js";
 
 interface BackupManifest {
@@ -36,7 +35,8 @@ const run = async (): Promise<void> => {
   if (!backupDirectory) throw new Error("Pass the pre-migration backup directory as the first argument");
   await verifyDatabaseBackup(backupDirectory);
   const manifest = mongoose.mongo.BSON.EJSON.parse(await readFile(path.join(backupDirectory, "manifest.json"), "utf8"), { relaxed: false }) as BackupManifest;
-  const client = new mongoose.mongo.MongoClient(env.MONGODB_URI, { serverSelectionTimeoutMS: 20_000, connectTimeoutMS: 20_000, socketTimeoutMS: 60_000, retryReads: true, maxPoolSize: 5 });
+  if (!process.env.MONGODB_MIGRATION_URI) throw new Error("Set MONGODB_MIGRATION_URI to the source MongoDB database");
+  const client = new mongoose.mongo.MongoClient(process.env.MONGODB_MIGRATION_URI, { serverSelectionTimeoutMS: 20_000, connectTimeoutMS: 20_000, socketTimeoutMS: 60_000, retryReads: true, maxPoolSize: 5 });
   await client.connect();
   let verifiedDocuments = 0;
   const differences = new Map<string, { records: number; fields: Set<string> }>();

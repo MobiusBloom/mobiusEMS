@@ -6,8 +6,8 @@ import cors from "cors";
 import express from "express";
 import rateLimit from "express-rate-limit";
 import helmet from "helmet";
-import mongoose from "mongoose";
 import { env } from "./config/env.js";
+import { isPostgresConnected } from "./persistence/postgres.js";
 import { errorHandler, notFound } from "./middleware/errorHandler.js";
 import { verifyRequestOrigin } from "./middleware/security.js";
 import { apiRouter } from "./routes/index.js";
@@ -20,10 +20,10 @@ export const createApp = () => {
   app.use(verifyRequestOrigin);
   app.use("/api", rateLimit({ windowMs: 60_000, limit: 200, standardHeaders: "draft-7", legacyHeaders: false }));
   app.get("/api/health", (_request, response) => {
-    const databaseConnected = mongoose.connection.readyState === 1;
+    const databaseConnected = isPostgresConnected();
     response.status(databaseConnected ? 200 : 503).json({
       success: databaseConnected,
-      message: databaseConnected ? "MobiusEMS API is healthy" : "API is running but MongoDB is unavailable",
+      message: databaseConnected ? "MobiusEMS API is healthy" : "API is running but PostgreSQL is unavailable",
       database: databaseConnected ? "connected" : "disconnected"
     });
   });

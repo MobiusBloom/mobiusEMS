@@ -4,7 +4,6 @@ import { createInterface } from "node:readline";
 import { createGunzip } from "node:zlib";
 import path from "node:path";
 import mongoose from "mongoose";
-import { env } from "../config/env.js";
 import { verifyDatabaseBackup } from "./backupDatabase.js";
 
 interface BackupManifest { database: string; collections: { name: string; file: string }[] }
@@ -16,7 +15,8 @@ const run = async (): Promise<void> => {
   if (!directory) throw new Error("Pass the verified pre-migration backup directory");
   await verifyDatabaseBackup(directory);
   const manifest = mongoose.mongo.BSON.EJSON.parse(await readFile(path.join(directory, "manifest.json"), "utf8"), { relaxed: false }) as BackupManifest;
-  const client = new mongoose.mongo.MongoClient(env.MONGODB_URI, { serverSelectionTimeoutMS: 20_000, connectTimeoutMS: 20_000, socketTimeoutMS: 60_000, retryWrites: true });
+  if (!process.env.MONGODB_MIGRATION_URI) throw new Error("Set MONGODB_MIGRATION_URI to the source MongoDB database");
+  const client = new mongoose.mongo.MongoClient(process.env.MONGODB_MIGRATION_URI, { serverSelectionTimeoutMS: 20_000, connectTimeoutMS: 20_000, socketTimeoutMS: 60_000, retryWrites: true });
   await client.connect();
   let restored = 0;
   try {

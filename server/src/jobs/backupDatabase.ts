@@ -8,7 +8,11 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createHash } from "node:crypto";
 import mongoose from "mongoose";
-import { env } from "../config/env.js";
+const migrationMongoUri = () => {
+  const value = process.env.MONGODB_MIGRATION_URI;
+  if (!value) throw new Error("Set MONGODB_MIGRATION_URI to the source MongoDB database before running this migration utility");
+  return value;
+};
 
 const safeName = (name: string) => encodeURIComponent(name).replaceAll("%", "_");
 const stamp = () => new Date().toISOString().replace(/[:.]/g, "-");
@@ -47,7 +51,7 @@ export const createDatabaseBackup = async (requestedDirectory?: string): Promise
   const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
   const directory = path.resolve(requestedDirectory || path.join(projectRoot, ".runtime", "backups", `before-tenant-migration-${stamp()}`));
   await mkdir(directory, { recursive: true });
-  const client = new mongoose.mongo.MongoClient(env.MONGODB_URI, { serverSelectionTimeoutMS: 10_000 });
+  const client = new mongoose.mongo.MongoClient(migrationMongoUri(), { serverSelectionTimeoutMS: 10_000 });
   await client.connect();
   try {
     const database = client.db();

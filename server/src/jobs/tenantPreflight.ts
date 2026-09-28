@@ -1,9 +1,9 @@
 import mongoose from "mongoose";
-import { env } from "../config/env.js";
 import { inspectPendingTenantMigration, inspectUnsafeTenantIndexes } from "../tenancy/migrateTenants.js";
 
 const run = async (): Promise<void> => {
-  await mongoose.connect(env.MONGODB_URI, { autoIndex: false, serverSelectionTimeoutMS: 10_000 });
+  if (!process.env.MONGODB_MIGRATION_URI) throw new Error("Set MONGODB_MIGRATION_URI to the source MongoDB database");
+  await mongoose.connect(process.env.MONGODB_MIGRATION_URI, { autoIndex: false, serverSelectionTimeoutMS: 10_000 });
   try {
     const [pending, unsafeIndexes] = await Promise.all([inspectPendingTenantMigration(), inspectUnsafeTenantIndexes()]);
     const total = pending.reduce((sum, collection) => sum + collection.records, 0);

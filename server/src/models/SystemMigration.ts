@@ -1,4 +1,5 @@
-import { Schema, model } from "mongoose";
+import { Schema } from "mongoose";
+import { postgresModel } from "../persistence/postgresModel.js";
 
 export interface SystemMigrationDocument { key: string; appliedAt: Date; details?: Record<string, unknown> }
 const schema = new Schema<SystemMigrationDocument>({
@@ -6,5 +7,5 @@ const schema = new Schema<SystemMigrationDocument>({
   appliedAt: { type: Date, required: true, default: Date.now },
   details: Schema.Types.Mixed,
 }, { timestamps: true });
-export const SystemMigration = model<SystemMigrationDocument>("SystemMigration", schema);
+export const SystemMigration = postgresModel<SystemMigrationDocument>("SystemMigration", schema);
 

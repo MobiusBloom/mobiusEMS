@@ -12,7 +12,7 @@ import { runWithTenant } from "./tenancy/tenantContext.js";
 const start = async (): Promise<void> => {
   // Do not accept traffic until tenant migration, indexes and baseline roles are ready.
   const { defaultTenantId } = await connectDatabase();
-  console.log("MongoDB connected and tenant migration verified");
+  console.log("PostgreSQL connected and schema verified");
   await seedOrganization(defaultTenantId);
   const tenantIds = await Tenant.find({ _id: { $ne: defaultTenantId } }).distinct("_id");
   for (const tenantId of tenantIds) await runWithTenant(tenantId, async () => { await seedTenantRoles(); await seedTenantGeography(); });
