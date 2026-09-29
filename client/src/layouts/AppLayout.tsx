@@ -14,10 +14,12 @@ import { NotificationsPopover } from "@/components/NotificationsPopover";
 import { MobiusEmsAiFloating } from "@/features/ai/AiWorkspacePanels";
 import { authApi } from "@/features/auth/authApi";
 import { useAuth } from "@/features/auth/AuthProvider";
+import { productSuite, productSuiteStages } from "@/data/productSuite";
 import { cn } from "@/lib/cn";
 
 type NavItem = {
   label: string;
+  description?: string;
   icon: ComponentType<{ size?: number; className?: string }>;
   path: string;
   roles?: RoleName[];
@@ -31,7 +33,7 @@ type NavItem = {
 
 const superAdminRole: RoleName[] = ["SUPER_ADMIN"];
 
-const groups: { label: string; items: NavItem[] }[] = [
+const coreGroups: { label: string; items: NavItem[] }[] = [
   {
     label: "Workspace",
     items: [
@@ -104,6 +106,21 @@ const groups: { label: string; items: NavItem[] }[] = [
   },
 ];
 
+const groups: { label: string; items: NavItem[] }[] = [
+  ...coreGroups,
+  ...productSuiteStages.map(({ stage, label }) => ({
+    label: `Complete suite · ${label}`,
+    items: productSuite
+      .filter((feature) => feature.stage === stage)
+      .map((feature) => ({
+        label: `${feature.id} ${feature.name}`,
+        description: feature.description,
+        icon: Sparkles,
+        path: `/welcome#${feature.id}`,
+      })),
+  })),
+];
+
 export const AppLayout = () => {
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -126,7 +143,9 @@ export const AppLayout = () => {
       queryClient.clear();
       try {
         sessionStorage.clear();
-      } catch {}
+      } catch {
+        // Storage can be unavailable in locked-down browser contexts.
+      }
       window.location.replace("/welcome");
     },
   });
@@ -222,9 +241,9 @@ export const AppLayout = () => {
                   <button
                     key={`${item.label}-${item.path}`}
                     onClick={() => { navigate(item.path); setMobileOpen(false); }}
-                    title={item.label}
+                    title={item.description ? `${item.label} — ${item.description}` : item.label}
                     className={cn(
-                      "flex h-9 w-full items-center rounded-xl px-3 text-xs font-medium transition",
+                      "flex min-h-9 w-full items-center rounded-xl px-3 py-2 text-left text-xs font-medium transition",
                       active
                         ? "bg-brand-50 font-semibold text-brand-700 shadow-2xs"
                         : "text-slate-600 hover:bg-slate-50 hover:text-slate-900",
@@ -232,7 +251,12 @@ export const AppLayout = () => {
                     )}
                   >
                     <Icon size={16} className={cn("shrink-0", active ? "text-brand-600" : "text-slate-500")} />
-                    {!collapsed && <span className="ml-3 truncate">{item.label}</span>}
+                    {!collapsed && (
+                      <span className="ml-3 min-w-0">
+                        <span className="block truncate">{item.label}</span>
+                        {item.description && <span className="mt-0.5 block line-clamp-2 text-[10px] font-normal leading-4 text-slate-400">{item.description}</span>}
+                      </span>
+                    )}
                   </button>
                 );
               })}

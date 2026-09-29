@@ -1,0 +1,66 @@
+export type ProductSuiteFeature = {
+  id: `F${number}`;
+  name: string;
+  description: string;
+  stage: 1 | 2 | 3 | 4;
+};
+
+export const productSuite: ProductSuiteFeature[] = [
+  { id: "F1", name: "Payroll", description: "Salary runs, deductions, payslips, bank files and full-and-final settlement.", stage: 1 },
+  { id: "F2", name: "Statutory compliance", description: "PF, ESI, professional tax, TDS, Form 16, LWF and gratuity support.", stage: 1 },
+  { id: "F3", name: "Leave management", description: "Policy-led balances, accruals, holidays, requests and team calendars.", stage: 1 },
+  { id: "F4", name: "Mobile app", description: "Mobile attendance, leave, approvals, tasks, payslips and notifications.", stage: 1 },
+  { id: "F5", name: "Shifts & rosters", description: "Flexible shifts, rotating rosters, swaps, overtime and weekly-off rules.", stage: 1 },
+  { id: "F6", name: "Biometric integration", description: "Connect ZKTeco and eSSL devices with punch mapping and de-duplication.", stage: 1 },
+  { id: "F7", name: "WhatsApp workforce", description: "Attendance, leave, approvals, payslips, tasks and reminders on WhatsApp.", stage: 1 },
+  { id: "F8", name: "Voice-to-task AI", description: "Turn multilingual voice notes into editable, confirmed work assignments.", stage: 1 },
+  { id: "F9", name: "Onboarding & offboarding", description: "Role-based joining, exit, clearance and handover checklists.", stage: 2 },
+  { id: "F10", name: "Expenses & reimbursements", description: "Receipt-backed claims, policy limits, approvals and payroll posting.", stage: 2 },
+  { id: "F11", name: "Timesheets", description: "Daily or weekly project time, approvals and billable reporting.", stage: 2 },
+  { id: "F12", name: "HR letters", description: "Merge-field templates, PDFs, acceptance tracking and employee copies.", stage: 2 },
+  { id: "F13", name: "Asset management", description: "Track company assets, issue and return condition, and ownership history.", stage: 2 },
+  { id: "F14", name: "Employee helpdesk", description: "Routed support tickets, SLA timers, escalations and knowledge suggestions.", stage: 2 },
+  { id: "F15", name: "Surveys & engagement", description: "Pulse surveys, anonymous responses, eNPS and department insights.", stage: 2 },
+  { id: "F16", name: "Interview scheduling", description: "Calendar-aware booking, candidate slots, reminders and scorecards.", stage: 2 },
+  { id: "F17", name: "Careers page & job boards", description: "Hosted job pages, tracked applications, sharing and job feeds.", stage: 2 },
+  { id: "F18", name: "Offer management", description: "Approved offers, salary breakup, online acceptance and onboarding handoff.", stage: 2 },
+  { id: "F19", name: "Automatic lead capture", description: "Capture, normalize, de-duplicate and assign leads from every channel.", stage: 3 },
+  { id: "F20", name: "Deals pipeline", description: "Configurable stages, Kanban deals, win-loss reasons and forecasting.", stage: 3 },
+  { id: "F21", name: "Skill-based work assignment", description: "Suggest available people by verified skill, workload and shift.", stage: 3 },
+  { id: "F22", name: "Privacy-first AI charter", description: "Human confirmation, decision logs, consent records and visible reasoning.", stage: 3 },
+  { id: "F23", name: "Quotes & invoices", description: "GST-ready quotes, discount approvals, invoices and payment tracking.", stage: 3 },
+  { id: "F24", name: "Call logging & click-to-call", description: "Cloud calling, activity logs, missed-call alerts and consent controls.", stage: 3 },
+  { id: "F25", name: "Field sales visits", description: "Visit plans, check-ins, notes, photos, maps and mileage claims.", stage: 3 },
+  { id: "F26", name: "Integrations", description: "Reliable connectors for finance, productivity, messaging and banking tools.", stage: 4 },
+  { id: "F27", name: "Open API & webhooks", description: "Scoped APIs, signed webhooks, rate limits and delivery logs.", stage: 4 },
+  { id: "F28", name: "SSO & two-factor login", description: "Google, Microsoft, SAML and multi-factor authentication options.", stage: 4 },
+  { id: "F29", name: "Multi-company & branch", description: "Separate legal entities, branch access, transfers and consolidated reports.", stage: 4 },
+  { id: "F30", name: "Data protection", description: "Encryption, consent, data requests, retention and breach readiness.", stage: 4 },
+  { id: "F31", name: "Regional-language interface", description: "Per-user language across the UI, payslips and WhatsApp templates.", stage: 4 },
+  { id: "F32", name: "HR linked to sales results", description: "Relate training, skills and attendance to sales outcomes responsibly.", stage: 4 },
+  { id: "F33", name: "AI hiring from top performers", description: "Build editable role profiles and explain applicant matches fairly.", stage: 4 },
+  { id: "F34", name: "Hire to onboard to sell", description: "Connect offer acceptance through readiness, territory and first deal.", stage: 4 },
+  { id: "F35", name: "Recognition & unified experience", description: "Kudos, contribution badges and a cleaner experience without duplicates.", stage: 4 },
+  { id: "F36", name: "Commission & incentives", description: "Flexible plans, statements, approvals, payroll payout and clawbacks.", stage: 3 },
+  { id: "F37", name: "Channel partner portal", description: "Partner lead registration, deal visibility, statements and resources.", stage: 3 },
+  { id: "F38", name: "Contract labour management", description: "Contractor compliance, worker attendance, wages and gate passes.", stage: 4 },
+  { id: "F39", name: "Attendance corrections & WFH", description: "Controlled missed-punch, on-duty and work-from-home adjustments.", stage: 1 },
+  { id: "F40", name: "Loans & salary advances", description: "Eligibility, approvals, EMI schedules and payroll recovery.", stage: 2 },
+  { id: "F41", name: "Increments & salary revision", description: "Budgeted revision cycles, merit guidance, arrears and letters.", stage: 3 },
+  { id: "F42", name: "Full review cycles", description: "Self, manager and peer reviews, calibration, 9-box and improvement plans.", stage: 3 },
+  { id: "F43", name: "Learning content", description: "Courses, quizzes, certificates and role-based learning paths.", stage: 3 },
+  { id: "F44", name: "Announcements & feed", description: "Targeted updates, acknowledgements, milestones and WhatsApp delivery.", stage: 2 },
+  { id: "F45", name: "Custom fields & workflows", description: "Flexible records, request forms and versioned business automations.", stage: 4 },
+  { id: "F46", name: "Custom report builder", description: "Choose data, filters, groups and charts, then share or schedule reports.", stage: 4 },
+  { id: "F47", name: "Data import & migration", description: "Guided validation, migration presets and safe batch rollback.", stage: 4 },
+  { id: "F48", name: "Multi-country support", description: "Currencies, time zones, local formats, holidays and country rules.", stage: 4 },
+  { id: "F49", name: "Self-serve setup & billing", description: "Trials, guided setup, plan selection, payments and renewals.", stage: 4 },
+  { id: "F50", name: "Travel requests", description: "Policy-checked travel approvals, advances, bookings and linked expenses.", stage: 2 },
+];
+
+export const productSuiteStages = [
+  { stage: 1 as const, label: "Workforce essentials" },
+  { stage: 2 as const, label: "People operations" },
+  { stage: 3 as const, label: "Growth & performance" },
+  { stage: 4 as const, label: "Enterprise scale" },
+];

@@ -21,6 +21,7 @@ import talentImg from "@/assets/talent-interview.jpg";
 import { useAuth } from "@/features/auth/AuthProvider";
 import { MarketingNavbar } from "@/components/MarketingNavbar";
 import { MarketingFooter } from "@/components/MarketingFooter";
+import { productSuite, productSuiteStages } from "@/data/productSuite";
 import {
   Particles,
   BorderBeam,
@@ -680,6 +681,36 @@ export const LandingPage = () => {
             ["Governance & Security", "Control access by tenant, role, and section while keeping a durable audit trail of sensitive actions.", "Admins & compliance", "Scale confidently without losing accountability."],
             ["Email Automation", "Create repeatable, permission-aware messages for onboarding, reminders, updates, and workflows.", "Operations", "Keep routine communication moving while people focus on judgment."],
           ].map(([title, description, audience, outcome], index) => <article key={title}><div className="lp-feature-atlas-index">0{index + 1}</div><div><span>{audience}</span><h3>{title}</h3><p>{description}</p><strong>→ {outcome}</strong></div></article>)}
+        </div>
+      </section>
+
+      <section className="lp-complete-suite scroll-mt-24" id="complete-suite" aria-labelledby="complete-suite-title">
+        <div className="lp-complete-suite-head">
+          <span className="lp-section-number">50</span>
+          <div>
+            <p className="lp-kicker">THE COMPLETE MOBIUSEMS SUITE</p>
+            <h2 id="complete-suite-title">Every capability.<br/><em>One connected platform.</em></h2>
+          </div>
+          <p>Explore all 50 workforce, people operations, sales, intelligence, and enterprise capabilities in the MobiusEMS product suite.</p>
+        </div>
+        <div className="lp-complete-suite-stages">
+          {productSuiteStages.map(({ stage, label }) => (
+            <section key={stage} aria-labelledby={`suite-stage-${stage}`}>
+              <div className="lp-complete-suite-stage-head">
+                <span>0{stage}</span>
+                <h3 id={`suite-stage-${stage}`}>{label}</h3>
+              </div>
+              <div className="lp-complete-suite-grid">
+                {productSuite.filter((feature) => feature.stage === stage).map((feature) => (
+                  <article id={feature.id} key={feature.id} className="scroll-mt-28">
+                    <span>{feature.id}</span>
+                    <h4>{feature.name}</h4>
+                    <p>{feature.description}</p>
+                  </article>
+                ))}
+              </div>
+            </section>
+          ))}
         </div>
       </section>
 
