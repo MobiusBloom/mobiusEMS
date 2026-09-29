@@ -114,7 +114,7 @@ const groups: { label: string; items: NavItem[] }[] = [
     items: productSuite
       .filter((feature) => feature.stage === stage)
       .map((feature) => ({
-        label: `${feature.id} ${feature.name}`,
+        label: feature.name,
         description: feature.description,
         dummy: true,
       })),
@@ -260,7 +260,6 @@ export const AppLayout = () => {
                     )}
                   >
                     {Icon && <Icon size={16} className={cn("shrink-0", active ? "text-brand-600" : "text-slate-500")} />}
-                    {collapsed && item.dummy && <span className="text-[10px] font-semibold text-slate-500">{item.label.split(" ")[0]}</span>}
                     {!collapsed && (
                       <span className={cn("min-w-0", Icon && "ml-3")}>
                         <span className="block truncate">{item.label}</span>
