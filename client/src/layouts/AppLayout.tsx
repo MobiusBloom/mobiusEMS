@@ -20,8 +20,9 @@ import { cn } from "@/lib/cn";
 type NavItem = {
   label: string;
   description?: string;
-  icon: ComponentType<{ size?: number; className?: string }>;
-  path: string;
+  icon?: ComponentType<{ size?: number; className?: string }>;
+  path?: string;
+  dummy?: boolean;
   roles?: RoleName[];
   permission?: PermissionName;
   permissions?: PermissionName[];
@@ -115,8 +116,7 @@ const groups: { label: string; items: NavItem[] }[] = [
       .map((feature) => ({
         label: `${feature.id} ${feature.name}`,
         description: feature.description,
-        icon: Sparkles,
-        path: `/welcome#${feature.id}`,
+        dummy: true,
       })),
   })),
 ];
@@ -167,9 +167,10 @@ export const AppLayout = () => {
     .filter((group) => group.items.length);
 
 
-  const allVisiblePaths = visibleGroups.flatMap((g) => g.items.map((i) => i.path));
+  const allVisiblePaths = visibleGroups.flatMap((g) => g.items.flatMap((i) => i.path ? [i.path] : []));
 
-  const isItemActive = (itemPath: string) => {
+  const isItemActive = (itemPath?: string) => {
+    if (!itemPath) return false;
     if (itemPath.startsWith("/governance")) {
       return location.pathname === "/governance" &&
         (itemPath.includes("tab=audit") === (new URLSearchParams(location.search).get("tab") === "audit"));
@@ -239,20 +240,29 @@ export const AppLayout = () => {
                 const active = isItemActive(item.path);
                 return (
                   <button
-                    key={`${item.label}-${item.path}`}
-                    onClick={() => { navigate(item.path); setMobileOpen(false); }}
+                    key={`${item.label}-${item.path ?? "dummy"}`}
+                    type="button"
+                    disabled={item.dummy}
+                    onClick={() => {
+                      if (!item.path) return;
+                      navigate(item.path);
+                      setMobileOpen(false);
+                    }}
                     title={item.description ? `${item.label} — ${item.description}` : item.label}
                     className={cn(
                       "flex min-h-9 w-full items-center rounded-xl px-3 py-2 text-left text-xs font-medium transition",
-                      active
+                      item.dummy
+                        ? "cursor-default text-slate-600"
+                        : active
                         ? "bg-brand-50 font-semibold text-brand-700 shadow-2xs"
                         : "text-slate-600 hover:bg-slate-50 hover:text-slate-900",
                       collapsed && "justify-center px-0"
                     )}
                   >
-                    <Icon size={16} className={cn("shrink-0", active ? "text-brand-600" : "text-slate-500")} />
+                    {Icon && <Icon size={16} className={cn("shrink-0", active ? "text-brand-600" : "text-slate-500")} />}
+                    {collapsed && item.dummy && <span className="text-[10px] font-semibold text-slate-500">{item.label.split(" ")[0]}</span>}
                     {!collapsed && (
-                      <span className="ml-3 min-w-0">
+                      <span className={cn("min-w-0", Icon && "ml-3")}>
                         <span className="block truncate">{item.label}</span>
                         {item.description && <span className="mt-0.5 block line-clamp-2 text-[10px] font-normal leading-4 text-slate-400">{item.description}</span>}
                       </span>
