@@ -7,7 +7,7 @@ import { AppError } from "../utils/AppError.js";
 import { createAccessToken, createRefreshToken, hashToken, verifyRefreshToken } from "./tokenService.js";
 import { writeAudit } from "./auditService.js";
 import type { RoleDocument } from "../models/Role.js";
-import { runWithTenant } from "../tenancy/tenantContext.js";
+import { requireTenantId, runWithTenant } from "../tenancy/tenantContext.js";
 import { requireActiveTenant, resolveTenantForLogin, tenantIdForRefreshTokenHash, type ActiveTenant } from "../tenancy/tenantResolver.js";
 import { Employee } from "../models/Employee.js";
 import { Department } from "../models/Department.js";
@@ -134,7 +134,7 @@ export const changePassword = async (userId: string, currentPassword: string, ne
   user.passwordHash = await bcrypt.hash(newPassword, 12); user.forcePasswordChange = false; user.passwordChangedAt = new Date(); await user.save();
   await RefreshSession.updateMany({ user: user._id, revokedAt: { $exists: false } }, { $set: { revokedAt: new Date() } });
   await writeAudit({ user: user._id, action: "PASSWORD_CHANGED", entityType: "User", entityId: user.id, ipAddress: request.ip, userAgent: request.get("user-agent") });
-  return sessionUser(user, await requireActiveTenant(user.get("tenantId").toString()));
+  return sessionUser(user, await requireActiveTenant(requireTenantId().toString()));
 };
 
 export const getSessionUser = async (userId: string, tenant: ActiveTenant): Promise<SessionUser> => {

@@ -20,6 +20,13 @@ const registered = new Map<string, RegisteredModel>();
 const SYSTEM_SCOPE = "__postgres_system_scope__";
 const debug = (...values: unknown[]) => { if (process.env.POSTGRES_MODEL_DEBUG === "true") console.error("postgres-model", ...values); };
 const objectId = () => new mongoose.Types.ObjectId();
+export const castPostgresDistinctValue = (schema: Schema, path: string, value: any): any => {
+  if (value == null || value instanceof mongoose.Types.ObjectId) return value;
+  const schemaType = schema.path(path) as any;
+  return path === "_id" || schemaType?.instance === "ObjectId" || schemaType?.caster?.instance === "ObjectId"
+    ? new mongoose.Types.ObjectId(String(value))
+    : value;
+};
 const scalar = (value: any): any => value instanceof mongoose.Types.ObjectId ? value.toString() : value instanceof Date ? value.getTime() : value;
 const equal = (left: any, right: any): boolean => {
   if (Array.isArray(left)) return left.some((item) => equal(item, right));
@@ -324,7 +331,7 @@ class PostgresQuery<T = any> implements PromiseLike<T> {
   skip(value: number): this { this.offset = value; return this; }
   lean<U = T>(): PostgresQuery<U> { this.leanResult = true; return this as any; }
   populate<U = T>(path: Populate, select?: Projection): PostgresQuery<U> { this.populates.push(typeof path === "string" && select ? { path, select } : path); return this as any; }
-  async distinct(path: string): Promise<any[]> { const value = await this.executeQuery(); const items = Array.isArray(value) ? value : value == null ? [] : [value]; return [...new Map(items.flatMap((item) => valuesAt(item, path)).map((item) => [String(item), item])).values()]; }
+  async distinct(path: string): Promise<any[]> { const value = await this.executeQuery(); const items = Array.isArray(value) ? value : value == null ? [] : [value]; return [...new Map(items.flatMap((item) => valuesAt(item, path)).map((item) => castPostgresDistinctValue(this.entry.schema, path, item)).map((item) => [String(item), item])).values()]; }
   collation(): this { return this; }
   session(): this { return this; }
   setOptions(): this { return this; }
@@ -438,7 +445,7 @@ export const postgresModel = <T>(name: string, schema: Schema<T>, tenantScoped =
     insertMany: async (input: any[]) => Promise.all(input.map(createOne)),
     countDocuments: (filter: Plain = {}) => { const scoped = captureScopedFilter(entry, filter); return new PostgresQuery(async () => { const value = await (compiled.collection as any).countDocuments(scoped); debug(entry.name, "countDocuments", value); return value; }, entry, scoped); },
     exists: (filter: Plain = {}) => { const scoped = captureScopedFilter(entry, filter); return new PostgresQuery(async () => { const item = await (compiled.collection as any).findOne(scoped, { projection: { _id: 1 } }); debug(entry.name, "exists", Boolean(item)); return item ? { _id: item._id } : null; }, entry, scoped); },
-    distinct: async (path: string, filter: Plain = {}) => { const scoped = captureScopedFilter(entry, filter); const rows = await (compiled.collection as any).find(scoped).toArray(); return [...new Map(rows.flatMap((item: Plain) => valuesAt(item, path)).map((value: any) => [String(value), value])).values()]; },
+    distinct: async (path: string, filter: Plain = {}) => { const scoped = captureScopedFilter(entry, filter); const rows = await (compiled.collection as any).find(scoped).toArray(); return [...new Map(rows.flatMap((item: Plain) => valuesAt(item, path)).map((value: any) => castPostgresDistinctValue(entry.schema, path, value)).map((value: any) => [String(value), value])).values()]; },
     updateOne: (filter: Plain, update: Plain, options?: Plain) => { const scoped = captureScopedFilter(entry, filter); const change = captureScopedUpdate(entry, update, Boolean(options?.upsert)); return new PostgresQuery(async () => (compiled.collection as any).updateOne(scoped, change, options), entry, scoped, change, options); },
     updateMany: (filter: Plain, update: Plain, options?: Plain) => { const scoped = captureScopedFilter(entry, filter); const change = captureScopedUpdate(entry, update, Boolean(options?.upsert)); return new PostgresQuery(async () => (compiled.collection as any).updateMany(scoped, change, options), entry, scoped, change, options); },
     findOneAndUpdate: (filter: Plain, update: Plain, options?: Plain) => { const scoped = captureScopedFilter(entry, filter); const change = captureScopedUpdate(entry, update, Boolean(options?.upsert)); return new PostgresQuery(async () => { const value = await (compiled.collection as any).findOneAndUpdate(scoped, change, options); debug(entry.name, "findOneAndUpdate", Boolean(value)); return value; }, entry, scoped, change, options); },
