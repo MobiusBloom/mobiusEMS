@@ -1,5 +1,4 @@
 import type { SessionUser, GeographicRollupNode, GeographicAnalyticsResponse, HeatmapPointTuple, HeatmapPointsResponse } from "@mobius-ems/shared";
-import { Types } from "mongoose";
 import { GeoNode } from "../models/GeoNode.js";
 import { SalesLead } from "../models/SalesLead.js";
 import { SalesCustomer } from "../models/SalesCustomer.js";
@@ -339,7 +338,7 @@ export const getGeographicAnalytics = async (
 
   // Find territories covering target descendants
   const relevantTerritories = allTerritories.filter((t) =>
-    t.coverageRules?.geoNodeIds?.some((gId) => targetDescendantIds.some((descId) => descId.equals(gId as Types.ObjectId)))
+    t.coverageRules?.geoNodeIds?.some((gId) => targetDescendantIds.some((descId) => String(descId) === String(gId)))
   );
   const relevantTerritoryIds = relevantTerritories.map((t) => t._id);
 
