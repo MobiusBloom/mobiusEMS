@@ -31,7 +31,10 @@ const request = async <T>(path: string, init: RequestInit = {}, canRefresh = tru
   const response = await fetch(path, { ...init, credentials: "include", headers: init.body instanceof FormData ? init.headers : { "Content-Type": "application/json", ...init.headers } });
   if (response.status === 401 && canRefresh && path !== "/api/v1/auth/refresh") {
     refreshPromise ??= fetch("/api/v1/auth/refresh", { method: "POST", credentials: "include" }).then((r) => r.ok).finally(() => { refreshPromise = null; });
-    if (await refreshPromise) return request<T>(path, init, false);
+    // Even when our refresh loses a race, another tab may already have set
+    // fresh cookies, so retry once before treating the session as gone.
+    await refreshPromise;
+    return request<T>(path, init, false);
   }
   if (response.status === 401 && path !== "/api/v1/auth/login" && path !== "/api/v1/auth/forgot-password" && path !== "/api/v1/auth/reset-password") {
     handleUnauthorized();

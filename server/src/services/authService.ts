@@ -19,6 +19,7 @@ import { isPlatformAdminEmail } from "../middleware/platformAdmin.js";
 
 import { DEFAULT_PLAN_CONFIGS } from "@mobius-ems/shared";
 
+const REFRESH_REUSE_GRACE_MS = 30_000;
 type PopulatedUser = Awaited<ReturnType<typeof getPopulatedUser>>;
 const getPopulatedUser = async (id: string) => User.findById(id).populate<{ role: RoleDocument }>("role").exec();
 const sessionUser = async (user: NonNullable<PopulatedUser>, tenant: ActiveTenant): Promise<SessionUser> => {
@@ -107,6 +108,11 @@ export const rotateRefreshToken = async (token: string, request: Request) => {
   const tenant = await requireActiveTenant(tenantId);
   return runWithTenant(tenantId, async () => {
     const existing = await RefreshSession.findOne({ tokenHash });
+    // A token rotated moments ago is a concurrent refresh (another tab or a
+    // parallel request), not theft; fail it without revoking the family.
+    if (existing?.revokedAt && existing.replacedByHash && Date.now() - existing.revokedAt.getTime() < REFRESH_REUSE_GRACE_MS) {
+      throw new AppError("Session was just refreshed", 401, "INVALID_REFRESH_TOKEN");
+    }
     if (!existing || existing.revokedAt) {
       await RefreshSession.updateMany({ family: payload.family, revokedAt: { $exists: false } }, { $set: { revokedAt: new Date() } });
       throw new AppError("Session reuse detected. Please sign in again", 401, "REFRESH_REUSE_DETECTED");

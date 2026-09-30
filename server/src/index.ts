@@ -1,6 +1,7 @@
 import { createServer } from "node:http";
 import { createApp } from "./app.js";
 import { connectDatabase, disconnectDatabase } from "./config/database.js";
+import { purgeExpiredPostgresDocuments } from "./persistence/postgresModel.js";
 import { env } from "./config/env.js";
 import { seedOrganization, seedTenantGeography, seedTenantRoles } from "./jobs/seedSuperAdmin.js";
 import { initializeEmailAutomation, runEmailAutomationCycle } from "./services/emailAutomationService.js";
@@ -24,6 +25,9 @@ const start = async (): Promise<void> => {
   const reminderTimer = setInterval(() => void runTargetReminderCycle(), 300_000); reminderTimer.unref();
   void runDocumentExpiryCycle().catch((error: unknown) => console.error("Document expiry check failed", error));
   const documentExpiryTimer = setInterval(() => void runDocumentExpiryCycle().catch((error: unknown) => console.error("Document expiry check failed", error)), 3_600_000); documentExpiryTimer.unref();
+  const purgeExpired = () => void purgeExpiredPostgresDocuments().catch((error: unknown) => console.error("Expired record cleanup failed", error));
+  purgeExpired();
+  const purgeTimer = setInterval(purgeExpired, 3_600_000); purgeTimer.unref();
 
   let shuttingDown = false;
   const shutdown = (signal: string) => {

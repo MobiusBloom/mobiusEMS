@@ -156,11 +156,60 @@ const captureScopedFilter = (entry: RegisteredModel, filter: Plain): Plain =>
 const captureScopedUpdate = (entry: RegisteredModel, update: Plain, upsert = false): Plain =>
   !entry.tenantScoped || isSystemContext() || currentTenantId() ? scopedUpdate(entry, update, upsert) : update;
 
-const readRows = async (entry: RegisteredModel, capturedTenantId?: string): Promise<Plain[]> => {
+// Translate the index-friendly subset of a Mongo filter into SQL so PostgreSQL
+// narrows rows before they are hydrated. The in-memory matcher still runs on
+// every returned row, so each clause only has to select a superset of matches;
+// anything not understood here is simply left to the matcher.
+const isIdValue = (value: any): boolean => value instanceof mongoose.Types.ObjectId || (typeof value === "string" && value.length > 0);
+const pathClause = (schema: Schema, path: string, condition: any, params: any[]): string | undefined => {
+  if (path === "_id") {
+    if (isIdValue(condition)) { params.push(String(condition)); return `id = $${params.length}`; }
+    if (condition && typeof condition === "object" && !Array.isArray(condition) && Object.keys(condition).length === 1) {
+      if (isIdValue(condition.$eq)) { params.push(String(condition.$eq)); return `id = $${params.length}`; }
+      if (Array.isArray(condition.$in) && condition.$in.every(isIdValue)) { params.push(condition.$in.map(String)); return `id = ANY($${params.length}::varchar[])`; }
+    }
+    return undefined;
+  }
+  if (path.startsWith("$") || path === "tenantId" || path.includes(".")) return undefined;
+  const schemaType: any = schema.path(path); if (!schemaType) return undefined;
+  const isArray = schemaType.instance === "Array";
+  const instance = isArray ? schemaType.caster?.instance : schemaType.instance;
+  const accepts = (value: any): boolean =>
+    instance === "String" ? typeof value === "string" : instance === "Boolean" ? typeof value === "boolean" : instance === "ObjectId" ? isIdValue(value) : false;
+  const containment = (value: any): string => { params.push(JSON.stringify({ [path]: isArray ? [scalar(value)] : scalar(value) })); return `document @> $${params.length}::jsonb`; };
+  let clause: string | undefined;
+  if (accepts(condition)) clause = containment(condition);
+  else if (condition && typeof condition === "object" && !Array.isArray(condition) && !(condition instanceof mongoose.Types.ObjectId) && Object.keys(condition).length === 1) {
+    if (accepts(condition.$eq)) clause = containment(condition.$eq);
+    else if (Array.isArray(condition.$in) && condition.$in.length > 0 && condition.$in.length <= 50 && condition.$in.every(accepts)) clause = `(${condition.$in.map(containment).join(" OR ")})`;
+  }
+  if (!clause) return undefined;
+  // Hydration fills schema defaults for keys absent from older JSON rows, so
+  // keep those rows and let the matcher decide.
+  if (schemaType.defaultValue !== undefined) { params.push(path); clause = `(${clause} OR NOT (document ? $${params.length}))`; }
+  return clause;
+};
+export const buildPostgresPrefilter = (schema: Schema, filter: Plain | undefined, params: any[]): string[] => {
+  const clauses: string[] = [];
+  for (const [path, condition] of Object.entries(filter ?? {})) {
+    if (path === "$and" && Array.isArray(condition)) { for (const item of condition) clauses.push(...buildPostgresPrefilter(schema, item, params)); continue; }
+    if (path === "$or" && Array.isArray(condition) && condition.length) {
+      const snapshot = params.length; const branches = condition.map((item: Plain) => buildPostgresPrefilter(schema, item, params));
+      if (branches.every((branch) => branch.length)) clauses.push(`(${branches.map((branch) => `(${branch.join(" AND ")})`).join(" OR ")})`);
+      else params.length = snapshot;
+      continue;
+    }
+    const clause = pathClause(schema, path, condition, params); if (clause) clauses.push(clause);
+  }
+  return clauses;
+};
+
+const readRows = async (entry: RegisteredModel, capturedTenantId?: string, filter?: Plain): Promise<Plain[]> => {
   const tenantId = capturedTenantId === SYSTEM_SCOPE ? undefined : capturedTenantId ?? tenantIdFor(entry);
-  const result = tenantId
-    ? await postgres.query(`SELECT document FROM ${quoteIdentifier(entry.table)} WHERE tenant_id = $1`, [tenantId])
-    : await postgres.query(`SELECT document FROM ${quoteIdentifier(entry.table)}`);
+  const params: any[] = []; const clauses: string[] = [];
+  if (tenantId) { params.push(tenantId); clauses.push(`tenant_id = $1`); }
+  clauses.push(...buildPostgresPrefilter(entry.schema, filter, params));
+  const result = await postgres.query(`SELECT document FROM ${quoteIdentifier(entry.table)}${clauses.length ? ` WHERE ${clauses.join(" AND ")}` : ""}`, params);
   // JSONB has no native ObjectId or Date types. Rehydrate through the existing
   // schema so comparisons and service code keep their original runtime types.
   return result.rows.map((row) => serialize(entry.model.hydrate(row.document)));
@@ -263,7 +312,7 @@ const populateOne = async (entry: RegisteredModel, document: Plain, request: Pop
     const ids = valuesAt(document, path).flat(Infinity);
     const tenantId = target.tenantScoped ? String(document.tenantId ?? "") : undefined;
     if (target.tenantScoped && !tenantId) throw new TenantContextError("Populated tenant data must retain tenantId");
-    let candidates = (await readRows(target, tenantId)).filter((item) => ids.some((id) => equal(item._id, id)) && matches(item, spec.match ?? {}));
+    let candidates = (await readRows(target, tenantId, { _id: { $in: ids.filter((id) => id != null).map((id) => id?._id ?? id) } })).filter((item) => ids.some((id) => equal(item._id, id)) && matches(item, spec.match ?? {}));
     sortDocuments(candidates, spec.options?.sort); if (spec.options?.limit) candidates = candidates.slice(0, spec.options.limit);
     const populated = candidates.map((item) => project(item, spec.select));
     if (spec.populate) for (const item of populated) for (const nested of Array.isArray(spec.populate) ? spec.populate : [spec.populate]) await populateOne(target, item, nested);
@@ -362,10 +411,14 @@ const aggregateDocuments = async (entry: RegisteredModel, pipeline: Plain[], ini
     else if (stage.$unwind) { const path = String(stage.$unwind).replace(/^\$/, ""); documents = documents.flatMap((document) => (valueAt(document, path) ?? []).map((value: any) => { const copy = clone(document); setAt(copy, path, value); return copy; })); }
     else if (stage.$lookup) {
       const target = [...registered.values()].find((item) => item.table === stage.$lookup.from); if (!target) continue;
+      const foreignByTenant = new Map<string, Promise<Plain[]>>();
       documents = await Promise.all(documents.map(async (document) => {
         const tenantId = target.tenantScoped ? String(document.tenantId ?? "") : undefined;
         if (target.tenantScoped && !tenantId) throw new TenantContextError("Lookup tenant data must retain tenantId");
-        const foreign = await readRows(target, tenantId);
+        const cacheKey = tenantId ?? SYSTEM_SCOPE;
+        if (!foreignByTenant.has(cacheKey)) foreignByTenant.set(cacheKey, readRows(target, tenantId ?? SYSTEM_SCOPE));
+        // Nested pipelines sort in place, so each join gets its own array.
+        const foreign = [...await foreignByTenant.get(cacheKey)!];
         const variables = Object.fromEntries(Object.entries(stage.$lookup.let ?? {}).map(([key, value]) => [key, expression(document, value)]));
         const joined = stage.$lookup.pipeline ? await aggregateDocuments(target, stage.$lookup.pipeline, foreign, variables) : foreign.filter((item) => equal(valueAt(item, stage.$lookup.foreignField), valueAt(document, stage.$lookup.localField)));
         return { ...document, [stage.$lookup.as]: joined };
@@ -396,32 +449,34 @@ const tenantFromFilter = (entry: RegisteredModel, filter: Plain): string | undef
 
 const collectionShim = (entry: RegisteredModel) => ({
   collectionName: entry.table,
-  findOne: async (filter: Plain, options?: { projection?: Plain }) => { filter = collectionScopedFilter(entry, filter); const item = (await readRows(entry, tenantFromFilter(entry, filter))).find((row) => matches(row, filter)); return item ? project(item, options?.projection) : null; },
-  find: (filter: Plain = {}, options?: { projection?: Plain }) => { filter = collectionScopedFilter(entry, filter); let maximum: number | undefined; return { limit(value: number) { maximum = value; return this; }, async toArray() { let rows = (await readRows(entry, tenantFromFilter(entry, filter))).filter((item) => matches(item, filter)); if (maximum) rows = rows.slice(0, maximum); return rows.map((item) => project(item, options?.projection)); } }; },
+  findOne: async (filter: Plain, options?: { projection?: Plain }) => { filter = collectionScopedFilter(entry, filter); const item = (await readRows(entry, tenantFromFilter(entry, filter), filter)).find((row) => matches(row, filter)); return item ? project(item, options?.projection) : null; },
+  find: (filter: Plain = {}, options?: { projection?: Plain }) => { filter = collectionScopedFilter(entry, filter); let maximum: number | undefined; return { limit(value: number) { maximum = value; return this; }, async toArray() { let rows = (await readRows(entry, tenantFromFilter(entry, filter), filter)).filter((item) => matches(item, filter)); if (maximum) rows = rows.slice(0, maximum); return rows.map((item) => project(item, options?.projection)); } }; },
   insertOne: async (document: Plain) => { const saved = await persist(entry, document, true); return { acknowledged: true, insertedId: saved._id }; },
   updateOne: async (filter: Plain, update: Plain, options?: Plain) => updateMany(entry, filter, update, { ...options, single: true }),
   updateMany: async (filter: Plain, update: Plain, options?: Plain) => updateMany(entry, filter, update, options),
   deleteMany: async (filter: Plain) => deleteMany(entry, filter),
-  deleteOne: async (filter: Plain) => { const item = (await readRows(entry, tenantFromFilter(entry, filter))).find((row) => matches(row, filter)); if (!item) return { acknowledged: true, deletedCount: 0 }; await postgres.query(`DELETE FROM ${quoteIdentifier(entry.table)} WHERE id=$1`, [String(item._id)]); return { acknowledged: true, deletedCount: 1 }; },
+  deleteOne: async (filter: Plain) => { const item = (await readRows(entry, tenantFromFilter(entry, filter), filter)).find((row) => matches(row, filter)); if (!item) return { acknowledged: true, deletedCount: 0 }; await postgres.query(`DELETE FROM ${quoteIdentifier(entry.table)} WHERE id=$1`, [String(item._id)]); return { acknowledged: true, deletedCount: 1 }; },
   findOneAndUpdate: async (filter: Plain, update: Plain, options?: Plain) => findOneAndUpdate(entry, filter, update, options),
-  findOneAndDelete: async (filter: Plain) => { const item = (await readRows(entry, tenantFromFilter(entry, filter))).find((row) => matches(row, filter)); if (item) await postgres.query(`DELETE FROM ${quoteIdentifier(entry.table)} WHERE id=$1`, [String(item._id)]); return item ?? null; },
-  countDocuments: async (filter: Plain = {}) => (await readRows(entry, tenantFromFilter(entry, filter))).filter((item) => matches(item, filter)).length,
+  findOneAndDelete: async (filter: Plain) => { const item = (await readRows(entry, tenantFromFilter(entry, filter), filter)).find((row) => matches(row, filter)); if (item) await postgres.query(`DELETE FROM ${quoteIdentifier(entry.table)} WHERE id=$1`, [String(item._id)]); return item ?? null; },
+  countDocuments: async (filter: Plain = {}) => (await readRows(entry, tenantFromFilter(entry, filter), filter)).filter((item) => matches(item, filter)).length,
   aggregate: <T = Plain>(pipeline: Plain[]) => ({ toArray: async () => {
     const tenantId = tenantFromFilter(entry, pipeline[0]?.$match ?? {});
-    return aggregateDocuments(entry, pipeline, await readRows(entry, tenantId)) as Promise<T[]>;
+    const leadingMatches: Plain[] = [];
+    for (const stage of pipeline) { if (!stage.$match) break; leadingMatches.push(stage.$match); }
+    return aggregateDocuments(entry, pipeline, await readRows(entry, tenantId, { $and: leadingMatches })) as Promise<T[]>;
   } }),
   indexes: async () => [], dropIndex: async () => undefined, createIndex: async () => undefined,
 });
 
 const updateMany = async (entry: RegisteredModel, filter: Plain, update: Plain, options: Plain = {}) => {
-  const rows = (await readRows(entry, tenantFromFilter(entry, filter))).filter((item) => matches(item, filter)); const selected = options.single ? rows.slice(0, 1) : rows;
+  const rows = (await readRows(entry, tenantFromFilter(entry, filter), filter)).filter((item) => matches(item, filter)); const selected = options.single ? rows.slice(0, 1) : rows;
   for (const row of selected) await persist(entry, applyUpdate(row, update));
   if (!selected.length && options.upsert) { const base = Object.fromEntries(Object.entries(filter).filter(([key, value]) => !key.startsWith("$") && (!value || typeof value !== "object" || value instanceof Date || value instanceof mongoose.Types.ObjectId))); await persist(entry, applyUpdate(base, update, true)); return { acknowledged: true, matchedCount: 0, modifiedCount: 0, upsertedCount: 1 }; }
   return { acknowledged: true, matchedCount: selected.length, modifiedCount: selected.length, upsertedCount: 0 };
 };
-const deleteMany = async (entry: RegisteredModel, filter: Plain) => { const rows = (await readRows(entry, tenantFromFilter(entry, filter))).filter((item) => matches(item, filter)); if (rows.length) await postgres.query(`DELETE FROM ${quoteIdentifier(entry.table)} WHERE id = ANY($1::varchar[])`, [rows.map((item) => String(item._id))]); return { acknowledged: true, deletedCount: rows.length }; };
+const deleteMany = async (entry: RegisteredModel, filter: Plain) => { const rows = (await readRows(entry, tenantFromFilter(entry, filter), filter)).filter((item) => matches(item, filter)); if (rows.length) await postgres.query(`DELETE FROM ${quoteIdentifier(entry.table)} WHERE id = ANY($1::varchar[])`, [rows.map((item) => String(item._id))]); return { acknowledged: true, deletedCount: rows.length }; };
 const findOneAndUpdate = async (entry: RegisteredModel, filter: Plain, update: Plain, options: Plain = {}) => {
-  const row = (await readRows(entry, tenantFromFilter(entry, filter))).find((item) => matches(item, filter));
+  const row = (await readRows(entry, tenantFromFilter(entry, filter), filter)).find((item) => matches(item, filter));
   if (!row && !options.upsert) return null;
   const base = row ?? Object.fromEntries(Object.entries(filter).filter(([key, value]) => !key.startsWith("$") && (!value || typeof value !== "object" || value instanceof Date || value instanceof mongoose.Types.ObjectId)));
   const saved = await persist(entry, applyUpdate(base, update, !row)); return options.new === false || options.returnDocument === "before" ? row : serialize(saved);
@@ -510,6 +565,20 @@ export const synchronizePostgresModels = async (): Promise<void> => {
       const columns = [...(Object.hasOwn(fields, "tenantId") || entry.tenantScoped ? ["tenant_id"] : []), ...paths.map((path) => `(document#>>'{${path.split(".").join(",")}}')`)];
       const where = paths.map((path) => `document#>>'{${path.split(".").join(",")}}' IS NOT NULL`).join(" AND ");
       await postgres.query(`CREATE UNIQUE INDEX IF NOT EXISTS ${quoteIdentifier(index)} ON ${quoteIdentifier(entry.table)} (${columns.join(", ")}) WHERE ${where}`);
+    }
+  }
+};
+
+// PostgreSQL has no TTL indexes; emulate Mongo's expireAfterSeconds cleanup.
+export const purgeExpiredPostgresDocuments = async (): Promise<void> => {
+  for (const entry of registered.values()) {
+    for (const [fields, options] of entry.schema.indexes() as [Record<string, unknown>, Record<string, any>][]) {
+      if (options.expireAfterSeconds === undefined) continue;
+      const path = Object.keys(fields)[0]; if (!path || path.includes(".")) continue;
+      await postgres.query(
+        `DELETE FROM ${quoteIdentifier(entry.table)} WHERE document ? $1 AND (document->>$1)::timestamptz < now() - make_interval(secs => $2)`,
+        [path, Number(options.expireAfterSeconds)],
+      );
     }
   }
 };
