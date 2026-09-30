@@ -7,6 +7,10 @@ WHALEXY_DEMO_ENABLED=true
 WHALEXY_DEMO_PASSWORD=<the private fixed password supplied to the owner>
 ```
 
+Demo provisioning starts in the background after the HTTP server begins listening.
+The website remains available while records are created or another worker holds
+the provisioning lock. The new demo login becomes available once setup succeeds.
+
 The password must contain at least 16 characters. Do not commit the password or
 change the production database/JWT settings. Startup provisions a separate
 `Whalexy` company with organization ID `whalexy-demo`. Startup logs report
