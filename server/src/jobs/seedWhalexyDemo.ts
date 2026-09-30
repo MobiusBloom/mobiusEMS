@@ -102,7 +102,6 @@ const samplePdf = (text: string): Buffer => {
 // Existing records are preserved so edits during a sales demonstration survive restarts.
 const seedDemoRecords = async (validateOnly = false) => {
   const password = env.WHALEXY_DEMO_PASSWORD;
-  if (!validateOnly && !password) throw new Error("Set WHALEXY_DEMO_PASSWORD (at least 16 characters) before enabling the Whalexy demo");
   const counts: Record<string, number> = {};
   let tenantId = stableId("offline", "Tenant", WHALEXY_DEMO_SLUG).toString();
   let anchor = new Date();
@@ -113,6 +112,7 @@ const seedDemoRecords = async (validateOnly = false) => {
     if (tenant?.status === "ACTIVE" && await runWithTenant(tenant._id, () => AuditLog.exists({ action: "WHALEXY_DEMO_PROVISIONED" }))) {
       return { tenantSlug: WHALEXY_DEMO_SLUG, alreadySeeded: true, counts, accounts: WHALEXY_DEMO_ACCOUNTS.map((a) => ({ email: demoEmail(a.key), role: a.role })) };
     }
+    if (!password || password.length < 16) throw new Error("Set WHALEXY_DEMO_PASSWORD (at least 16 characters) before enabling the Whalexy demo");
     if (!tenant) tenant = await Tenant.create({ name: "Whalexy", slug: WHALEXY_DEMO_SLUG, primaryUseCase: marker, industry: "Software and business services", companySize: "11-50", country: "India", status: "PROVISIONING", plan: "ENTERPRISE", subscriptionStatus: "ACTIVE", maxEmployees: 50, maxStorageMb: 10240, features: DEFAULT_PLAN_CONFIGS.ENTERPRISE.features });
     tenantId = tenant._id.toString();
     // Keep periods/IDs stable on reruns; this is a snapshot of a company on its creation date.

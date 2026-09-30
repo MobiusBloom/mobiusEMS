@@ -44,7 +44,7 @@ const schema = z.object({
   SUPER_ADMIN_NAME: z.string().optional(), SUPER_ADMIN_EMAIL: z.string().email().optional(),
   SUPER_ADMIN_PASSWORD: z.string().min(12).optional(),
   WHALEXY_DEMO_ENABLED: z.enum(["true", "false"]).default("false").transform((value) => value === "true"),
-  WHALEXY_DEMO_PASSWORD: z.string().min(16).max(128).optional(),
+  WHALEXY_DEMO_PASSWORD: z.string().max(128).optional(),
   ATTENDANCE_OFFICE_NAME: z.string().default("Shivnath Business Centre, Raipur"),
   ATTENDANCE_OFFICE_LATITUDE: z.coerce.number().min(-90).max(90).default(21.251413450117614),
   ATTENDANCE_OFFICE_LONGITUDE: z.coerce.number().min(-180).max(180).default(81.70943785263866),
