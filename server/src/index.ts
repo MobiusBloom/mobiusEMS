@@ -9,6 +9,7 @@ import { runTargetReminderCycle } from "./services/targetReminderService.js";
 import { runDocumentExpiryCycle } from "./services/documentExpiryService.js";
 import { Tenant } from "./models/Tenant.js";
 import { runWithTenant } from "./tenancy/tenantContext.js";
+import { seedWhalexyDemo } from "./jobs/seedWhalexyDemo.js";
 
 const start = async (): Promise<void> => {
   // Do not accept traffic until tenant migration, indexes and baseline roles are ready.
@@ -17,6 +18,11 @@ const start = async (): Promise<void> => {
   await seedOrganization(defaultTenantId);
   const tenantIds = await Tenant.find({ _id: { $ne: defaultTenantId } }).distinct("_id");
   for (const tenantId of tenantIds) await runWithTenant(tenantId, async () => { await seedTenantRoles(); await seedTenantGeography(); });
+  if (env.WHALEXY_DEMO_ENABLED) {
+    // A demo provisioning error must not take existing organizations offline.
+    try { console.log("Whalexy demo verified", await seedWhalexyDemo()); }
+    catch (error) { console.error("Whalexy demo provisioning failed; existing organizations remain available", error); }
+  }
 
   const server = createServer(createApp());
   server.listen(env.PORT, () => console.log(`MobiusEMS listening on port ${env.PORT}`));

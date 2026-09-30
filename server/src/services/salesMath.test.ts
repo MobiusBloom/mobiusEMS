@@ -1,5 +1,14 @@
 import assert from "node:assert/strict"; import test from "node:test";
-import { calculateCapacity, calculateCompensationPayout, calculateEstimatedOpportunityLost, calculateOpportunityScore, percentage, weightedPipelineValue } from "./salesMath.js";
+import { calculateCapacity, calculateCompensationPayout, calculateEstimatedOpportunityLost, calculateOpportunityScore, calculateTargetPerformance, percentage, weightedPipelineValue } from "./salesMath.js";
+test("target performance handles PostgreSQL JSON dates in every period phase", () => {
+  const periodStart = new Date("2026-09-01T00:00:00Z");
+  const periodEnd = new Date("2026-09-30T23:59:59Z");
+  for (const now of [new Date("2026-08-31"), new Date("2026-09-15"), new Date("2026-10-01")]) {
+    const input = { officialTarget: 750000, actual: 540000, periodStart, periodEnd, now };
+    assert.deepEqual(calculateTargetPerformance({ ...input, periodStart: periodStart.toISOString(), periodEnd: periodEnd.toISOString() }), calculateTargetPerformance(input));
+  }
+  assert.throws(() => calculateTargetPerformance({ officialTarget: 100, actual: 50, periodStart: "invalid", periodEnd }), /Invalid target period/);
+});
 test("sales capacity exposes deterministic headcount gap and coverage", () => { assert.deepEqual(calculateCapacity(1000, 1, 300), { currentLeadLoad: 1000, configuredLeadCapacity: 300, requiredHeadcount: 4, activeHeadcount: 1, headcountGap: 3, capacityUtilization: 333.33, coveragePercentage: 25 }); });
 test("sales conversion, weighted pipeline and target math are deterministic", () => { assert.equal(percentage(29, 186), 15.59); assert.equal(percentage(1540000, 2000000), 77); assert.equal(weightedPipelineValue([{ estimatedValue: 1000, probability: 50 }, { estimatedValue: 2000, probability: 25 }]), 1000); });
 test("opportunity scoring is normalized and lost revenue is clearly estimated", () => { assert.deepEqual(calculateOpportunityScore({ leadDemandScore: 100, coverageGapScore: 80, customerWhiteSpaceScore: 60, pipelinePotentialScore: 40, growthScore: 20, conversionPotentialScore: 80 }, { demand: 20, coverageGap: 25, customerWhiteSpace: 15, pipelinePotential: 15, growth: 10, conversionPotential: 15 }), { opportunityScore: 69, opportunityBand: "HIGH" }); assert.deepEqual(calculateEstimatedOpportunityLost(700, 15, 4, 30000), { estimatedLostConversions: 77, estimatedOpportunityLost: 2310000, isEstimate: true }); });
