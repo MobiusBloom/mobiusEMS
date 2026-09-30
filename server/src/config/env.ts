@@ -7,7 +7,7 @@ const schema = z.object({
   CLIENT_URL: z.string().url().default("http://localhost:5173"),
   DATABASE_URL: z.string().min(1).default("postgresql://mobius:mobius@127.0.0.1:5432/mobius_ems"),
   POSTGRES_MIN_POOL_SIZE: z.coerce.number().int().min(0).max(20).default(2),
-  POSTGRES_MAX_POOL_SIZE: z.coerce.number().int().min(2).max(100).default(20),
+  POSTGRES_MAX_POOL_SIZE: z.coerce.number().int().min(2).max(100).default(5),
   POSTGRES_SSL: z.enum(["true", "false"]).default("false").transform((value) => value === "true"),
   DEFAULT_TENANT_NAME: z.string().min(2).max(120).default("MobiusEMS"),
   DEFAULT_TENANT_SLUG: z.string().regex(/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/).default("mobiusbloom"),
