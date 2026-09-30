@@ -39,6 +39,24 @@ test("PostgreSQL populate supports arrays and empty arrays like Mongoose", async
   assert.equal(populated[0]!.owner.joinedAt.getTime(), new Date(date).getTime());
 });
 
+test("PostgreSQL populate batches references across a result set", async (context) => {
+  const ownerIds = [new Types.ObjectId(), new Types.ObjectId()];
+  const recordIds = [new Types.ObjectId(), new Types.ObjectId()];
+  const Owner = postgresModel("BatchedPopulateOwner", new Schema({ name: String }));
+  const Record = postgresModel("BatchedPopulateRecord", new Schema({ owner: { type: Schema.Types.ObjectId, ref: Owner.modelName } }));
+  let ownerReads = 0;
+  context.mock.method(postgres, "query", async (sql: string) => {
+    if (sql.includes('"batchedpopulateowners"')) {
+      ownerReads += 1;
+      return { rows: ownerIds.map((id, index) => ({ document: { _id: id.toString(), name: `Owner ${index + 1}` } })) };
+    }
+    return { rows: recordIds.map((id, index) => ({ document: { _id: id.toString(), owner: ownerIds[index]!.toString() } })) };
+  });
+  const rows = await Record.find().populate("owner", "name").lean<{ owner: { name: string } }[]>();
+  assert.deepEqual(rows.map((row) => row.owner.name), ["Owner 1", "Owner 2"]);
+  assert.equal(ownerReads, 1);
+});
+
 test("PostgreSQL distinct values preserve Mongoose ObjectId behavior", () => {
   const schema = new Schema({ owner: Schema.Types.ObjectId, members: [Schema.Types.ObjectId], label: String });
   const id = new Types.ObjectId().toString();

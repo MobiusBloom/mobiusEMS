@@ -300,32 +300,48 @@ const schemaRef = (schema: Schema, path: string): string | undefined => {
   return undefined;
 };
 
-const replacePopulatedPath = (source: any, parts: string[], candidates: Plain[]): void => {
+const replacePopulatedPath = (source: any, parts: string[], candidates: Plain[], limit?: number): void => {
   if (!source || !parts.length) return;
-  if (Array.isArray(source)) { for (const item of source) replacePopulatedPath(item, parts, candidates); return; }
+  if (Array.isArray(source)) { for (const item of source) replacePopulatedPath(item, parts, candidates, limit); return; }
   const [head, ...tail] = parts;
-  if (tail.length) { replacePopulatedPath(source[head!], tail, candidates); return; }
+  if (tail.length) { replacePopulatedPath(source[head!], tail, candidates, limit); return; }
   const resolve = (id: any) => candidates.find((item) => equal(item._id, id)) ?? null;
-  source[head!] = Array.isArray(source[head!]) ? source[head!].map(resolve).filter(Boolean) : resolve(source[head!]);
+  if (Array.isArray(source[head!])) {
+    const resolved = source[head!].map(resolve).filter(Boolean);
+    source[head!] = limit ? resolved.slice(0, limit) : resolved;
+  } else source[head!] = resolve(source[head!]);
 };
 
-const populateOne = async (entry: RegisteredModel, document: Plain, request: Populate): Promise<void> => {
+const populateMany = async (entry: RegisteredModel, documents: Plain[], request: Populate): Promise<void> => {
   const spec = typeof request === "string" ? { path: request } : request;
   for (const path of spec.path.split(/\s+/).filter(Boolean)) {
     const ref = schemaRef(entry.schema, path); if (!ref) continue;
     const target = registered.get(ref); if (!target) continue;
-    const current = valueAt(document, path); if (current == null) continue;
-    const ids = valuesAt(document, path).flat(Infinity);
-    const tenantId = target.tenantScoped ? String(document.tenantId ?? "") : undefined;
-    if (target.tenantScoped && !tenantId) throw new TenantContextError("Populated tenant data must retain tenantId");
-    let candidates = (await readRows(target, tenantId, { _id: { $in: ids.filter((id) => id != null).map((id) => id?._id ?? id) } })).filter((item) => ids.some((id) => equal(item._id, id)) && matches(item, spec.match ?? {}));
-    sortDocuments(candidates, spec.options?.sort); if (spec.options?.limit) candidates = candidates.slice(0, spec.options.limit);
-    // Nested references need the parent tenantId before public field selection removes it.
-    if (spec.populate) for (const item of candidates) for (const nested of Array.isArray(spec.populate) ? spec.populate : [spec.populate]) await populateOne(target, item, nested);
-    const populated = candidates.map((item) => project(item, spec.select));
-    replacePopulatedPath(document, path.split("."), populated);
+    const groups = new Map<string, { tenantId?: string; documents: Plain[]; ids: any[] }>();
+    for (const document of documents) {
+      if (valueAt(document, path) == null) continue;
+      const tenantId = target.tenantScoped ? String(document.tenantId ?? "") : undefined;
+      if (target.tenantScoped && !tenantId) throw new TenantContextError("Populated tenant data must retain tenantId");
+      const key = tenantId ?? "__global__";
+      const group = groups.get(key) ?? { tenantId, documents: [], ids: [] };
+      group.documents.push(document);
+      group.ids.push(...valuesAt(document, path).flat(Infinity).filter((id) => id != null).map((id) => id?._id ?? id));
+      groups.set(key, group);
+    }
+    for (const group of groups.values()) {
+      const ids = [...new Map(group.ids.map((id) => [String(id), id])).values()];
+      if (!ids.length) continue;
+      let candidates = (await readRows(target, group.tenantId, { _id: { $in: ids } })).filter((item) => ids.some((id) => equal(item._id, id)) && matches(item, spec.match ?? {}));
+      sortDocuments(candidates, spec.options?.sort);
+      // Nested references need the parent tenantId before public field selection removes it.
+      if (spec.populate) for (const nested of Array.isArray(spec.populate) ? spec.populate : [spec.populate]) await populateMany(target, candidates, nested);
+      const populated = candidates.map((item) => project(item, spec.select));
+      for (const document of group.documents) replacePopulatedPath(document, path.split("."), populated, spec.options?.limit);
+    }
   }
 };
+
+const populateOne = async (entry: RegisteredModel, document: Plain, request: Populate): Promise<void> => populateMany(entry, [document], request);
 
 const decoratePopulatedDocument = (entry: RegisteredModel, document: Plain): Plain => {
   const value = document;
@@ -397,7 +413,7 @@ class PostgresQuery<T = any> implements PromiseLike<T> {
     if (result !== null && result !== undefined && (!Array.isArray(result)) && (typeof result !== "object" || "acknowledged" in result)) return result as T;
     const array = Array.isArray(result); let items = array ? result : result == null ? [] : [result];
     sortDocuments(items, this.order); items = items.slice(this.offset, this.maximum === undefined ? undefined : this.offset + this.maximum);
-    for (const item of items) for (const populate of this.populates) await populateOne(this.entry, item, populate);
+    for (const populate of this.populates) await populateMany(this.entry, items, populate);
     const hidden = Object.entries(this.entry.schema.paths).filter(([, path]: any) => path.options?.select === false).map(([path]) => path);
     items = items.map((item) => project(item, this.projection, hidden));
     if (this.fail && !items.length) throw new Error("No document found");
