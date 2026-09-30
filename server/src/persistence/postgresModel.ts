@@ -120,7 +120,13 @@ const matches = (document: Plain, filter: Plain = {}, variables: Plain = {}): bo
   return true;
 };
 
-const clone = <T>(value: T): T => structuredClone(JSON.parse(JSON.stringify(value)));
+const clone = <T>(value: T): T => {
+  if (value instanceof Date) return new Date(value.getTime()) as T;
+  if (value instanceof mongoose.Types.ObjectId) return value.toString() as T;
+  if (Array.isArray(value)) return value.map((item) => clone(item)) as T;
+  if (value !== null && typeof value === "object") return Object.fromEntries(Object.entries(value).filter(([, item]) => item !== undefined).map(([key, item]) => [key, clone(item)])) as T;
+  return value;
+};
 const serialize = (document: any): Plain => document?.toObject
   ? document.toObject({ depopulate: true, flattenObjectIds: true, getters: false, virtuals: false, minimize: false })
   : clone(document);
@@ -314,8 +320,9 @@ const populateOne = async (entry: RegisteredModel, document: Plain, request: Pop
     if (target.tenantScoped && !tenantId) throw new TenantContextError("Populated tenant data must retain tenantId");
     let candidates = (await readRows(target, tenantId, { _id: { $in: ids.filter((id) => id != null).map((id) => id?._id ?? id) } })).filter((item) => ids.some((id) => equal(item._id, id)) && matches(item, spec.match ?? {}));
     sortDocuments(candidates, spec.options?.sort); if (spec.options?.limit) candidates = candidates.slice(0, spec.options.limit);
+    // Nested references need the parent tenantId before public field selection removes it.
+    if (spec.populate) for (const item of candidates) for (const nested of Array.isArray(spec.populate) ? spec.populate : [spec.populate]) await populateOne(target, item, nested);
     const populated = candidates.map((item) => project(item, spec.select));
-    if (spec.populate) for (const item of populated) for (const nested of Array.isArray(spec.populate) ? spec.populate : [spec.populate]) await populateOne(target, item, nested);
     replacePopulatedPath(document, path.split("."), populated);
   }
 };
@@ -379,7 +386,7 @@ class PostgresQuery<T = any> implements PromiseLike<T> {
   limit(value: number): this { this.maximum = value; return this; }
   skip(value: number): this { this.offset = value; return this; }
   lean<U = T>(): PostgresQuery<U> { this.leanResult = true; return this as any; }
-  populate<U = T>(path: Populate, select?: Projection): PostgresQuery<U> { this.populates.push(typeof path === "string" && select ? { path, select } : path); return this as any; }
+  populate<U = T>(path: Populate | Populate[], select?: Projection): PostgresQuery<U> { this.populates.push(...(Array.isArray(path) ? path : [typeof path === "string" && select ? { path, select } : path])); return this as any; }
   async distinct(path: string): Promise<any[]> { const value = await this.executeQuery(); const items = Array.isArray(value) ? value : value == null ? [] : [value]; return [...new Map(items.flatMap((item) => valuesAt(item, path)).map((item) => castPostgresDistinctValue(this.entry.schema, path, item)).map((item) => [String(item), item])).values()]; }
   collation(): this { return this; }
   session(): this { return this; }
