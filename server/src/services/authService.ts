@@ -62,13 +62,15 @@ export const requestSuperAdminPasswordReset = async (email: string, tenantSlug?:
   try { tenant = await resolveTenantForLogin(email, tenantSlug); } catch { return resetMessage; }
   await runWithTenant(tenant._id, async () => {
     const user = await User.findOne({ email, isActive: true }).populate<{ role: RoleDocument }>("role");
-    if (!user || user.role.name !== "SUPER_ADMIN" || !isPlatformAdminEmail(user.email)) return;
+    if (!user || user.role.name !== "SUPER_ADMIN") return;
     const token = randomBytes(32).toString("hex");
     user.passwordResetTokenHash = resetHash(token); user.passwordResetTokenExpiresAt = new Date(Date.now() + 30 * 60 * 1000); await user.save();
     if (env.SMTP_HOST && env.SMTP_PORT && env.SMTP_USER && env.SMTP_PASSWORD) {
-      const transport = nodemailer.createTransport({ host: env.SMTP_HOST, port: env.SMTP_PORT, secure: env.SMTP_PORT === 465, auth: { user: env.SMTP_USER, pass: env.SMTP_PASSWORD } });
+      const transport = nodemailer.createTransport({ host: env.SMTP_HOST, port: env.SMTP_PORT, secure: env.SMTP_PORT === 465, auth: { user: env.SMTP_USER, pass: env.SMTP_PASSWORD }, connectionTimeout: 10000, greetingTimeout: 10000, socketTimeout: 20000 });
       const link = `${env.CLIENT_URL}/reset-password?token=${token}&email=${encodeURIComponent(user.email)}&tenant=${tenant.slug}`;
-      await transport.sendMail({ from: env.SMTP_USER, to: user.email, subject: "MobiusEMS Super Admin password reset", text: `Reset your password within 30 minutes: ${link}` });
+      try {
+        await transport.sendMail({ from: env.SMTP_USER, to: user.email, subject: "MobiusEMS Super Admin password reset", text: `Reset your password within 30 minutes: ${link}` });
+      } finally { transport.close(); }
     }
   });
   return resetMessage;
@@ -78,7 +80,7 @@ export const resetSuperAdminPassword = async (email: string, token: string, newP
   const tenant = await resolveTenantForLogin(email, tenantSlug);
   return runWithTenant(tenant._id, async () => {
     const user = await User.findOne({ email, isActive: true }).select("+passwordHash +passwordResetTokenHash").populate<{ role: RoleDocument }>("role");
-    if (!user || user.role.name !== "SUPER_ADMIN" || !isPlatformAdminEmail(user.email) || !user.passwordResetTokenHash || !user.passwordResetTokenExpiresAt || user.passwordResetTokenExpiresAt < new Date() || user.passwordResetTokenHash !== resetHash(token)) throw new AppError("Reset link is invalid or expired", 400, "INVALID_RESET_TOKEN");
+    if (!user || user.role.name !== "SUPER_ADMIN" || !user.passwordResetTokenHash || !user.passwordResetTokenExpiresAt || user.passwordResetTokenExpiresAt < new Date() || user.passwordResetTokenHash !== resetHash(token)) throw new AppError("Reset link is invalid or expired", 400, "INVALID_RESET_TOKEN");
     user.passwordHash = await bcrypt.hash(newPassword, 12); user.passwordChangedAt = new Date(); user.forcePasswordChange = false; user.passwordResetTokenHash = undefined; user.passwordResetTokenExpiresAt = undefined; await user.save();
     await RefreshSession.updateMany({ user: user._id, revokedAt: { $exists: false } }, { $set: { revokedAt: new Date() } });
     await writeAudit({ user: user._id, action: "SUPER_ADMIN_PASSWORD_RESET", entityType: "User", entityId: user.id, ipAddress: request.ip, userAgent: request.get("user-agent") });

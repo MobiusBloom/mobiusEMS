@@ -37,5 +37,5 @@ export const changePassword = async (request: Request, response: Response): Prom
   const user = await authService.changePassword(request.user!.id, currentPassword, newPassword, request); clearCookies(response);
   response.json({ success: true, message: "Password changed. Please sign in again", data: { user } });
 };
-export const requestPasswordReset = async (request: Request, response: Response): Promise<void> => { const result = await authService.requestSuperAdminPasswordReset(request.body.email, request.body.tenantSlug); response.json({ success: true, message: result }); };
+export const requestPasswordReset = async (request: Request, response: Response): Promise<void> => { const result = await authService.requestSuperAdminPasswordReset(request.body.email, request.body.tenantSlug); response.json({ success: true, message: result, data: { message: result } }); };
 export const resetPassword = async (request: Request, response: Response): Promise<void> => { await authService.resetSuperAdminPassword(request.body.email, request.body.token, request.body.newPassword, request.body.tenantSlug, request); response.json({ success: true, message: "Password reset successfully" }); };
