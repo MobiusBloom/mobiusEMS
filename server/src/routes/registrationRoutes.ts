@@ -12,6 +12,7 @@ import { createTenantSchema } from "../validators/tenantValidators.js";
 import { createTenant, generateTenantSlug } from "../services/tenantService.js";
 import { User } from "../models/User.js";
 import { Tenant } from "../models/Tenant.js";
+import { runAsSystem } from "../tenancy/tenantContext.js";
 
 const baseDetails = createTenantSchema.shape.body.omit({ temporaryPassword: true, plan: true });
 const details = baseDetails.extend({
@@ -63,7 +64,7 @@ registrationRouter.post(
   asyncHandler(async (request, response) => {
     const input = details.parse(request.body);
 
-    if (await User.collection.findOne({ email: input.adminEmail }, { projection: { _id: 1 } })) throw new AppError("An account already uses this email. Sign in instead or use another email", 409, "EMAIL_EXISTS");
+    if (await runAsSystem(() => User.collection.findOne({ email: input.adminEmail }, { projection: { _id: 1 } }))) throw new AppError("An account already uses this email. Sign in instead or use another email", 409, "EMAIL_EXISTS");
     
     let slug = input.slug?.trim().toLowerCase();
     if (slug) {
@@ -87,7 +88,6 @@ registrationRouter.post(
     const host = process.env.MAIL_HOST || env.SMTP_HOST;
     const user = process.env.MAIL_USERNAME || env.SMTP_USER;
     const pass = process.env.MAIL_PASSWORD || env.SMTP_PASSWORD;
-    const smtpConfigured = Boolean(host && user && pass);
     const brevoConfigured = Boolean(env.EMAIL_AUTOMATION_ENABLED && env.BREVO_API_KEY && env.BREVO_SENDER_EMAIL);
 
     const emailSubject = `Your MobiusEMS Verification Code: ${otp}`;
@@ -113,7 +113,7 @@ registrationRouter.post(
     </div>`;
 
     // 1. Try SMTP if configured
-    if (smtpConfigured) {
+    if (host && user && pass) {
       const port = Number(process.env.MAIL_PORT || env.SMTP_PORT || 587);
       const isSecure = port === 465;
       const transport = nodemailer.createTransport({
