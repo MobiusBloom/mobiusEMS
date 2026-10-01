@@ -92,3 +92,32 @@ test("PostgreSQL prefilter translates $in and fully-indexable $or", () => {
   assert.deepEqual(clauses, ["id = ANY($1::varchar[])", "((document @> $2::jsonb) OR ((document @> $3::jsonb OR document @> $4::jsonb)))"]);
   assert.deepEqual(params[0], ids.map(String));
 });
+
+test("saving selected fields preserves hidden credentials and excluded nondefault values", async (context) => {
+  const tenantId = new Types.ObjectId();
+  const record = { _id: new Types.ObjectId().toString(), tenantId: tenantId.toString(), label: "Before", secret: "private", enabled: false, resetToken: "old-token" };
+  const Model = postgresModel("ProjectedSaveRegression", new Schema({ tenantId: Schema.Types.ObjectId, label: { type: String, required: true }, secret: { type: String, required: true, select: false }, enabled: { type: Boolean, default: true }, resetToken: String }), true);
+  let writes = 0;
+  context.mock.method(postgres, "query", async (sql: string, params: unknown[]) => {
+    if (sql.startsWith("INSERT")) {
+      const saved = JSON.parse(params[2] as string);
+      assert.equal(saved.secret, record.secret);
+      assert.equal(saved.enabled, false);
+      assert.equal(saved.label, "After");
+      assert.equal(saved.resetToken, writes === 0 ? "old-token" : undefined);
+      writes += 1;
+      return { rows: [] };
+    }
+    return { rows: [{ document: record }] };
+  });
+  await runWithTenant(tenantId, async () => {
+    const projected = await Model.findById(record._id).select("label resetToken").orFail();
+    assert.equal(projected.enabled, undefined);
+    projected.label = "After";
+    await projected.save();
+    assert.equal(projected.secret, undefined, "Saving must not expose hidden fields");
+    projected.resetToken = undefined;
+    await projected.save();
+  });
+  assert.equal(writes, 2);
+});

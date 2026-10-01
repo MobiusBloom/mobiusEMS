@@ -8,7 +8,8 @@
     "preview": "vite preview",
     "build": "tsc -b && vite build --configLoader runner",
     "lint": "eslint src --max-warnings=0",
-    "typecheck": "tsc -b --pretty false"
+    "typecheck": "tsc -b --pretty false",
+    "test": "tsx --test src/lib/*.test.ts"
   },
   "dependencies": {
     "@eslint/js": "^9.31.0",

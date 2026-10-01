@@ -270,8 +270,8 @@ export const calculateSeniorityRank = (item: {
 
 export const autoStructureTenantHierarchy = async (forceAll = false) => {
   const employees = await Employee.find({ isActive: true })
-    .populate("designation", "name level")
-    .populate("department", "name code")
+    .populate<{ designation: { name: string; level?: string } | null }>("designation", "name level")
+    .populate<{ department: { _id: Types.ObjectId; name: string; code: string } | null }>("department", "name code")
     .lean();
 
   if (employees.length === 0) {
@@ -280,16 +280,16 @@ export const autoStructureTenantHierarchy = async (forceAll = false) => {
 
   const ranked = employees.map((emp) => {
     const seniority = calculateSeniorityRank({
-      designationTitle: (emp.designation as any)?.name,
-      designationLevel: (emp.designation as any)?.level,
+      designationTitle: emp.designation?.name,
+      designationLevel: emp.designation?.level,
     });
     return {
       _id: emp._id as Types.ObjectId,
       firstName: emp.firstName,
       lastName: emp.lastName,
-      departmentId: (emp.department as any)?._id?.toString() || "",
-      departmentName: (emp.department as any)?.name || "",
-      designationTitle: (emp.designation as any)?.name || "",
+      departmentId: emp.department?._id?.toString() || "",
+      departmentName: emp.department?.name || "",
+      designationTitle: emp.designation?.name || "",
       currentManagerId: emp.reportingManager ? emp.reportingManager.toString() : null,
       rank: seniority.rank,
       tierName: seniority.tierName,
@@ -306,7 +306,7 @@ export const autoStructureTenantHierarchy = async (forceAll = false) => {
   const updates: { employeeId: Types.ObjectId; managerId: Types.ObjectId | null }[] = [];
 
   for (const emp of ranked) {
-    if (emp._id.equals(topExecutive._id)) {
+    if (String(emp._id) === String(topExecutive._id)) {
       if (emp.currentManagerId !== null) {
         updates.push({ employeeId: emp._id, managerId: null });
       }
@@ -319,7 +319,7 @@ export const autoStructureTenantHierarchy = async (forceAll = false) => {
       } else {
         const deptSuperior = ranked.find(
           (cand) =>
-            !cand._id.equals(emp._id) &&
+            String(cand._id) !== String(emp._id) &&
             cand.departmentId === emp.departmentId &&
             cand.rank < emp.rank
         );
@@ -328,7 +328,7 @@ export const autoStructureTenantHierarchy = async (forceAll = false) => {
           updates.push({ employeeId: emp._id, managerId: deptSuperior._id });
         } else {
           const orgSuperior = ranked.find(
-            (cand) => !cand._id.equals(emp._id) && cand.rank < emp.rank
+            (cand) => String(cand._id) !== String(emp._id) && cand.rank < emp.rank
           );
           updates.push({ employeeId: emp._id, managerId: orgSuperior ? orgSuperior._id : topExecutive._id });
         }

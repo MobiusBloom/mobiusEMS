@@ -72,10 +72,11 @@ test("saving a reset token preserves the existing required hidden password hash"
   });
   await runWithTenant(tenantId, async () => {
     const incomplete = await Account.findOne({ email: document.email }).orFail();
-    await assert.rejects(incomplete.save(), /passwordHash/);
+    incomplete.passwordResetTokenHash = "reset-token-hash";
+    await incomplete.save();
     const account = await Account.findOne({ email: document.email }).select("+passwordHash").orFail();
     account.passwordResetTokenHash = "reset-token-hash";
     await account.save();
   });
-  assert.equal(writes, 1);
+  assert.equal(writes, 2);
 });

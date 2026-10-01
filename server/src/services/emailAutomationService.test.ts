@@ -5,13 +5,39 @@ import { Types } from "mongoose";
 import { Tenant } from "../models/Tenant.js";
 import { EmailDelivery } from "../models/EmailDelivery.js";
 import { EmailEnrollment } from "../models/EmailEnrollment.js";
-import { runWithTenant } from "../tenancy/tenantContext.js";
+import { VendorContact } from "../models/VendorContact.js";
+import { isSystemContext, runWithTenant } from "../tenancy/tenantContext.js";
 import { encryptSecret } from "../utils/secretCipher.js";
 import { env } from "../config/env.js";
-import { activateWorkflow, configuration, handleWebhook, runEmailAutomationCycle, sendTest, syncDeliveryEvents, testConnection } from "./emailAutomationService.js";
+import { activateWorkflow, configuration, handleWebhook, runEmailAutomationCycle, sendTest, syncDeliveryEvents, testConnection, unsubscribe } from "./emailAutomationService.js";
 
 const tenantId = new Types.ObjectId();
 const tenant = () => ({ _id: tenantId, emailAutomation: { apiKeyEncrypted: encryptSecret("test-brevo-key-never-sent"), senderName: "Test tenant", senderEmail: "sender@example.com", replyToEmail: "sender@example.com" } });
+
+test("public unsubscribe discovers the owner then scopes contact and enrollment writes", async (context) => {
+  const id = new Types.ObjectId();
+  context.mock.method(VendorContact.collection, "findOne", async (filter: Record<string, unknown>) => {
+    assert.equal(isSystemContext(), true);
+    return filter.unsubscribeToken === "valid-test-token" ? { _id: id, tenantId } : null;
+  });
+  let stopped = false;
+  context.mock.method(VendorContact.collection, "findOneAndUpdate", async (filter: Record<string, unknown>) => {
+    assert.equal(isSystemContext(), false);
+    assert.equal(String(filter.tenantId), String(tenantId));
+    return { _id: id, tenantId };
+  });
+  context.mock.method(EmailEnrollment.collection, "updateMany", async (filter: Record<string, unknown>) => {
+    assert.equal(String(filter.tenantId), String(tenantId));
+    assert.equal(String(filter.contact), String(id));
+    stopped = true;
+    return { acknowledged: true, matchedCount: 1, modifiedCount: 1 };
+  });
+  await assert.rejects(unsubscribe("invalid-test-token"), { statusCode: 404 });
+  assert.equal(stopped, false);
+  await unsubscribe("valid-test-token");
+  assert.equal(stopped, true);
+  assert.equal(isSystemContext(), false);
+});
 
 test("disabled Brevo accounts cannot send tests, activate workflows, or consume queued jobs", async (t) => {
   t.mock.method(Tenant.collection, "findOne", async () => tenant());
@@ -80,11 +106,13 @@ test("webhooks match the recipient, isolate writes, and ignore late duplicate re
   const stored = { _id: id, tenantId, recipientEmail: "recipient@example.com", status: "REQUESTED", lastEventAt: new Date(1000), events: [{ type: "request", occurredAt: new Date(1000) }] };
   t.mock.method(EmailDelivery.collection, "findOne", async (filter: Record<string, unknown>) => {
     if (filter.providerMessageId) {
+      assert.equal(isSystemContext(), true);
       if (filter.recipientEmail !== stored.recipientEmail) return null;
     } else assert.equal(String(filter.tenantId), String(tenantId));
     return stored;
   });
   t.mock.method(EmailDelivery.collection, "findOneAndUpdate", async (filter: Record<string, unknown>, update: { $push: { events: { type: string; occurredAt: Date } } }) => {
+    assert.equal(isSystemContext(), false);
     assert.equal(String(filter.tenantId), String(tenantId));
     const event = update.$push.events;
     if (stored.events.some(e => e.type === event.type && +e.occurredAt === +event.occurredAt)) return null;

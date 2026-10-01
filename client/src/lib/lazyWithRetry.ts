@@ -2,9 +2,10 @@ import { lazy, type ComponentType } from "react";
 
 const CHUNK_RETRY_PREFIX = "mobius-chunk-retry:";
 
+// React.lazy uses this constraint to preserve each page's own prop type.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function lazyWithRetry<T extends ComponentType<any>>(
-  factory: () => Promise<{ default: T } | Record<string, any>>,
-  namedExport?: string
+  factory: () => Promise<{ default: T }>
 ) {
   return lazy(async () => {
     const pageKey = `${CHUNK_RETRY_PREFIX}${window.location.pathname}`;
@@ -12,13 +13,9 @@ export function lazyWithRetry<T extends ComponentType<any>>(
       const module = await factory();
       try {
         sessionStorage.removeItem(pageKey);
-      } catch {}
+      } catch { /* Storage access may be disabled by browser policy. */ }
 
-      const modRecord = module as Record<string, any>;
-      if (namedExport && modRecord[namedExport]) {
-        return { default: modRecord[namedExport] as T };
-      }
-      return module as { default: T };
+      return module;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       const isChunkError =
@@ -33,7 +30,10 @@ export function lazyWithRetry<T extends ComponentType<any>>(
           if (!alreadyRetried) {
             sessionStorage.setItem(pageKey, "true");
           }
-        } catch {}
+        } catch {
+          // Without persistent state, automatic reload could loop indefinitely.
+          alreadyRetried = true;
+        }
 
         if (!alreadyRetried) {
           console.warn("Chunk load error detected after deployment. Forcing fresh asset reload...", error);

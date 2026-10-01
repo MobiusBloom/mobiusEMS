@@ -2,13 +2,35 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { Types } from "mongoose";
 import { ROLES, ROLE_PERMISSIONS } from "@mobius-ems/shared";
+import { Employee } from "../models/Employee.js";
 import {
   assertEmployeeInScope,
+  autoStructureTenantHierarchy,
   assertSubordinateInScope,
   type ViewerHierarchyScope,
 } from "./hierarchyService.js";
 
 const newId = () => new Types.ObjectId();
+
+test("automatic reporting hierarchy supports PostgreSQL string identifiers", async (context) => {
+  const executive = newId().toString();
+  const employee = newId().toString();
+  const rows = [
+    { _id: executive, firstName: "Test", lastName: "CEO", designation: { name: "CEO" }, department: { _id: "sales", name: "Sales" } },
+    { _id: employee, firstName: "Test", lastName: "Employee", designation: { name: "Sales Executive" }, department: { _id: "sales", name: "Sales" } },
+  ];
+  const query = { populate: () => query, lean: async () => rows };
+  context.mock.method(Employee, "find", () => query);
+  let assignments = 0;
+  context.mock.method(Employee, "updateOne", async (filter: { _id: string }, update: { $set: { reportingManager: string } }) => {
+    assert.equal(String(filter._id), employee);
+    assert.equal(String(update.$set.reportingManager), executive);
+    assignments += 1;
+  });
+  const result = await autoStructureTenantHierarchy();
+  assert.equal(result.topExecutiveId, executive);
+  assert.equal(assignments, 1);
+});
 
 test("ROLES catalog contains required enterprise hierarchy roles", () => {
   assert.ok(ROLES.includes("SUPER_ADMIN"));

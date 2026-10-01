@@ -12,7 +12,7 @@ import { errorHandler, notFound } from "./middleware/errorHandler.js";
 import { verifyRequestOrigin } from "./middleware/security.js";
 import { apiRouter } from "./routes/index.js";
 
-export const createApp = () => {
+export const createApp = (isReady: () => boolean = () => true) => {
   const app = express(); app.set("trust proxy", 1); app.disable("x-powered-by");
   app.use(helmet({ contentSecurityPolicy: env.NODE_ENV === "production" ? undefined : false }));
   app.use(cors({ origin: env.CLIENT_URL, credentials: true }));
@@ -21,13 +21,18 @@ export const createApp = () => {
   app.use("/api", rateLimit({ windowMs: 60_000, limit: 200, standardHeaders: "draft-7", legacyHeaders: false }));
   app.get("/api/health", (_request, response) => {
     const databaseConnected = isPostgresConnected();
-    response.status(databaseConnected ? 200 : 503).json({
-      success: databaseConnected,
-      message: databaseConnected ? "MobiusEMS API is healthy" : "API is running but PostgreSQL is unavailable",
+    const ready = databaseConnected && isReady();
+    response.status(ready ? 200 : 503).json({
+      success: ready,
+      message: ready ? "MobiusEMS API is healthy" : databaseConnected ? "Application is initializing" : "API is running but PostgreSQL is unavailable",
       database: databaseConnected ? "connected" : "disconnected"
     });
   });
-  app.use("/api/v1", apiRouter);
+  app.use("/api/v1", (_request, response, next) => {
+    if (isReady()) return next();
+    response.setHeader("Retry-After", "5");
+    response.status(503).json({ success: false, message: "Application is initializing. Please retry shortly.", code: "APP_INITIALIZING" });
+  }, apiRouter);
   app.use("/api", notFound);
   if (env.NODE_ENV === "production") {
     const dirname = path.dirname(fileURLToPath(import.meta.url)); const clientDist = path.resolve(dirname, "../../client/dist");

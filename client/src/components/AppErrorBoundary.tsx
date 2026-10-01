@@ -3,9 +3,6 @@ import { Component, type ErrorInfo, type ReactNode } from "react";
 const reloadKey = "mobius-chunk-reload";
 
 export const forceHardReload = () => {
-  try {
-    sessionStorage.clear();
-  } catch {}
   const url = new URL(window.location.href);
   url.searchParams.set("_v", String(Date.now()));
   window.location.replace(url.toString());
@@ -16,9 +13,14 @@ export const recoverStaleChunk = (error: unknown) => {
   if (!/dynamically imported module|loading chunk|chunkloaderror|importing a module script|failed to fetch|load failed/i.test(message)) {
     return false;
   }
-  const lastReload = Number(sessionStorage.getItem(reloadKey) || 0);
-  if (Date.now() - lastReload < 15_000) return false;
-  sessionStorage.setItem(reloadKey, String(Date.now()));
+  try {
+    const lastReload = Number(sessionStorage.getItem(reloadKey) || 0);
+    if (Date.now() - lastReload < 15_000) return false;
+    sessionStorage.setItem(reloadKey, String(Date.now()));
+  } catch {
+    // Storage can be disabled. Keep the recovery button available without a reload loop.
+    return false;
+  }
   forceHardReload();
   return true;
 };

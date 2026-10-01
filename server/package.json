@@ -19,7 +19,8 @@
     "restore:migration-metadata": "tsx src/jobs/restoreMigrationMetadata.ts",
     "migrate:tenants": "tsx src/jobs/runTenantMigration.ts",
     "migrate:mongo": "tsx src/jobs/migrateMongoToPostgres.ts",
-    "test": "tsx --test src/**/*.test.ts"
+    "test": "tsx --import ./src/testSetup.ts --test src/**/*.test.ts",
+    "audit:integration": "node scripts/qualityAudit.mjs"
   },
   "dependencies": {
     "@eslint/js": "^9.31.0",

@@ -331,7 +331,7 @@ const populateMany = async (entry: RegisteredModel, documents: Plain[], request:
     for (const group of groups.values()) {
       const ids = [...new Map(group.ids.map((id) => [String(id), id])).values()];
       if (!ids.length) continue;
-      let candidates = (await readRows(target, group.tenantId, { _id: { $in: ids } })).filter((item) => ids.some((id) => equal(item._id, id)) && matches(item, spec.match ?? {}));
+      const candidates = (await readRows(target, group.tenantId, { _id: { $in: ids } })).filter((item) => ids.some((id) => equal(item._id, id)) && matches(item, spec.match ?? {}));
       sortDocuments(candidates, spec.options?.sort);
       // Nested references need the parent tenantId before public field selection removes it.
       if (spec.populate) for (const nested of Array.isArray(spec.populate) ? spec.populate : [spec.populate]) await populateMany(target, candidates, nested);
@@ -357,8 +357,7 @@ const decoratePopulatedDocument = (entry: RegisteredModel, document: Plain): Pla
           : current && typeof current === "object" && "_id" in current;
         return isPopulated ? [[path, current] as const] : [];
       });
-      const saved = await persist(entry, value);
-      Object.assign(value, serialize(saved));
+      await saveExistingDocument(entry, value);
       for (const [path, current] of populated) setAt(value, path, current);
       return value;
     } },
@@ -369,6 +368,19 @@ const decoratePopulatedDocument = (entry: RegisteredModel, document: Plain): Pla
     } },
   });
   return value;
+};
+
+// Save only loaded fields: a projected document must not erase hidden credentials
+// or unrelated fields. Explicit undefined values still clear their stored fields.
+const saveExistingDocument = async (entry: RegisteredModel, document: Plain): Promise<void> => {
+  const raw = document instanceof entry.model ? document.toObject({ depopulate: true, minimize: false }) : document;
+  const fields = serialize(document);
+  validateTenant(entry, fields);
+  delete fields._id;
+  const clearedPaths = document instanceof entry.model ? document.modifiedPaths().filter((path: string) => document.get(path) === undefined) : [];
+  const unset = Object.fromEntries([...Object.entries(raw).filter(([, value]) => value === undefined).map(([key]) => key), ...clearedPaths].map((key) => [key, 1]));
+  const result = await entry.model.collection.updateOne(scopedFilter(entry, { _id: document._id }), scopedUpdate(entry, { $set: fields, $unset: unset }));
+  if (!result.matchedCount) throw new Error("Document no longer exists");
 };
 
 const applyUpdate = (document: Plain, update: Plain, inserting = false): Plain => {
@@ -417,7 +429,8 @@ class PostgresQuery<T = any> implements PromiseLike<T> {
     const hidden = Object.entries(this.entry.schema.paths).filter(([, path]: any) => path.options?.select === false).map(([path]) => path);
     items = items.map((item) => project(item, this.projection, hidden));
     if (this.fail && !items.length) throw new Error("No document found");
-    const converted = this.leanResult ? items : this.populates.length ? items.map((item) => decoratePopulatedDocument(this.entry, item)) : items.map((item) => this.entry.model.hydrate(item));
+    // Pass the loaded fields so hydration cannot restore defaults excluded by select().
+    const converted = this.leanResult ? items : this.populates.length ? items.map((item) => decoratePopulatedDocument(this.entry, item)) : items.map((item) => this.entry.model.hydrate(item, Object.fromEntries(Object.keys(item).map((key) => [key, 1]))));
     return (array ? converted : converted[0] ?? null) as T;
   }
   then<TResult1 = T, TResult2 = never>(onfulfilled?: ((value: T) => TResult1 | PromiseLike<TResult1>) | null, onrejected?: ((reason: any) => TResult2 | PromiseLike<TResult2>) | null): Promise<TResult1 | TResult2> { return this.exec().then(onfulfilled, onrejected); }
@@ -542,10 +555,10 @@ export const postgresModel = <T>(name: string, schema: Schema<T>, tenantScoped =
   Object.defineProperty(compiled, "collection", { configurable: true, value: collectionShim(entry) });
   compiled.prototype.save = async function () {
     const now = new Date(); if (entry.schema.options.timestamps) { if (!this.createdAt) this.createdAt = now; this.updatedAt = now; }
-    const plain = serialize(this); validateTenant(entry, plain); this.set(plain); await this.validate();
+    const plain = serialize(this); validateTenant(entry, plain); this.set(plain);
     if (process.env.POSTGRES_MODEL_DEBUG === "true") console.error("postgres-model-save", entry.name, { isNew: this.isNew, id: String(this._id), status: (this as any).status });
-    if (this.isNew) await (compiled.collection as any).insertOne(serialize(this));
-    else await (compiled.collection as any).updateOne(scopedFilter(entry, { _id: this._id }), scopedUpdate(entry, { $set: serialize(this) }));
+    if (this.isNew) { await this.validate(); await (compiled.collection as any).insertOne(serialize(this)); }
+    else await saveExistingDocument(entry, this);
     this.isNew = false; return this;
   };
   compiled.prototype.populate = async function (this: any, path: Populate | Populate[], select?: Projection) {

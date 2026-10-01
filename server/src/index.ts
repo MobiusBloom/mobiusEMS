@@ -12,22 +12,29 @@ import { runWithTenant } from "./tenancy/tenantContext.js";
 import { seedWhalexyDemo } from "./jobs/seedWhalexyDemo.js";
 
 const start = async (): Promise<void> => {
-  // Do not accept traffic until tenant migration, indexes and baseline roles are ready.
+  // Bind promptly for the hosting proxy; API traffic stays gated until setup finishes.
+  let ready = false;
+  const server = createServer(createApp(() => ready));
+  await new Promise<void>((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(env.PORT, () => {
+      server.removeListener("error", reject);
+      console.log(`MobiusEMS listening on port ${env.PORT}`);
+      resolve();
+    });
+  });
   const { defaultTenantId } = await connectDatabase();
   console.log("PostgreSQL connected and schema verified");
   await seedOrganization(defaultTenantId);
   const tenantIds = await Tenant.find({ _id: { $ne: defaultTenantId } }).distinct("_id");
   for (const tenantId of tenantIds) await runWithTenant(tenantId, async () => { await seedTenantRoles(); await seedTenantGeography(); });
-  const server = createServer(createApp());
-  server.listen(env.PORT, () => {
-    console.log(`MobiusEMS listening on port ${env.PORT}`);
-    // Demo setup can be slow or wait on another worker's lock. Serve traffic first.
-    if (env.WHALEXY_DEMO_ENABLED) {
-      void seedWhalexyDemo()
-        .then((result) => console.log("Whalexy demo verified", result))
-        .catch((error: unknown) => console.error("Whalexy demo provisioning failed; existing organizations remain available", error));
-    }
-  });
+  ready = true;
+  // Demo setup can be slow or wait on another worker's lock. Serve traffic first.
+  if (env.WHALEXY_DEMO_ENABLED) {
+    void seedWhalexyDemo()
+      .then((result) => console.log("Whalexy demo verified", result))
+      .catch((error: unknown) => console.error("Whalexy demo provisioning failed; existing organizations remain available", error));
+  }
   void initializeEmailAutomation().catch((error: unknown) => console.error("Brevo email automation initialization failed", error));
   const automationTimer = setInterval(() => void runEmailAutomationCycle(), 60_000); automationTimer.unref();
   const reminderTimer = setInterval(() => void runTargetReminderCycle(), 300_000); reminderTimer.unref();
@@ -45,6 +52,7 @@ const start = async (): Promise<void> => {
     clearInterval(automationTimer);
     clearInterval(reminderTimer);
     clearInterval(documentExpiryTimer);
+    clearInterval(purgeTimer);
     server.close(() => { void disconnectDatabase().finally(() => process.exit(0)); });
     setTimeout(() => process.exit(1), 10_000).unref();
   };

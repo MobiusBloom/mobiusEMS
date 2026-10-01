@@ -1,4 +1,4 @@
-import { randomInt, createHash } from "node:crypto";
+import { randomInt, createHmac } from "node:crypto";
 import { Router } from "express";
 import rateLimit from "express-rate-limit";
 import jwt from "jsonwebtoken";
@@ -75,9 +75,11 @@ registrationRouter.post(
       slug = await generateTenantSlug(input.name);
     }
 
-    // Generate 6-digit OTP and secure SHA-256 hash
+    // Generate a six-digit verification code.
     const otp = randomInt(100000, 1000000).toString();
-    const otpHash = createHash("sha256").update(otp).digest("hex");
+    // The signed token is readable by its holder. A keyed digest prevents
+    // recovering a six-digit code by enumerating its small search space.
+    const otpHash = createHmac("sha256", env.JWT_ACCESS_SECRET).update(`${slug}:${input.adminEmail}:${otp}`).digest("hex");
 
     const registrationToken = jwt.sign(
       { ...input, slug, otpHash, purpose: "organization-registration-otp" },
@@ -149,17 +151,6 @@ registrationRouter.post(
         return;
       } catch (err) {
         console.error("Failed to send SMTP OTP email:", err);
-        // Fallback to providing code directly so user is never blocked
-        response.json({
-          success: true,
-          message: "Verification email could not be sent. Use the direct code provided below.",
-          data: {
-            registrationToken,
-            emailSent: false,
-            directOtp: otp,
-          },
-        });
-        return;
       } finally {
         transport.close();
       }
@@ -198,32 +189,15 @@ registrationRouter.post(
         }
 
         console.error("Brevo registration OTP email error:", await brevoRes.text());
-        response.json({
-          success: true,
-          message: "Verification email could not be sent. Use the direct code provided below.",
-          data: {
-            registrationToken,
-            emailSent: false,
-            directOtp: otp,
-          },
-        });
-        return;
       } catch (err) {
         console.error("Brevo dispatch error:", err);
-        response.json({
-          success: true,
-          message: "Verification email could not be sent. Use the direct code provided below.",
-          data: {
-            registrationToken,
-            emailSent: false,
-            directOtp: otp,
-          },
-        });
-        return;
       }
     }
 
-    // 3. Fallback when neither SMTP nor Brevo is configured
+    // Never expose the verification code to an unverified production caller.
+    if (env.NODE_ENV === "production") {
+      throw new AppError("Verification email could not be sent. Please retry shortly or contact support.", 503, "EMAIL_DELIVERY_UNAVAILABLE");
+    }
     response.json({
       success: true,
       message: "Email service is not configured on this server. Use the direct code provided below to complete registration.",
@@ -257,7 +231,7 @@ registrationRouter.post(
       throw new AppError("Verification code is expired or invalid. Please request a new code.", 400);
     }
 
-    const expectedHash = createHash("sha256").update(otp.trim()).digest("hex");
+    const expectedHash = createHmac("sha256", env.JWT_ACCESS_SECRET).update(`${payload.slug}:${payload.adminEmail}:${otp.trim()}`).digest("hex");
     if (payload.otpHash !== expectedHash) {
       throw new AppError("Invalid verification code. Please check and try again.", 400);
     }
@@ -282,7 +256,7 @@ registrationRouter.post(
     try {
       const payload = jwt.verify(input.token, env.JWT_ACCESS_SECRET, {
         algorithms: ["HS256"],
-        audience: ["organization-registration", "organization-registration-otp"],
+        audience: "organization-registration",
         issuer: "mobius-ems",
       });
       if (typeof payload === "string") throw new Error();

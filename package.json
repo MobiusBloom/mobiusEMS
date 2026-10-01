@@ -31,7 +31,7 @@
     "verify:preservation": "npm run verify:preservation -w server --",
     "migrate:tenants": "npm run migrate:tenants -w server --",
     "migrate:mongo": "npm run migrate:mongo -w server",
-    "test": "npm run test -w server"
+    "test": "npm run test -w client && npm run test -w server"
   },
   "devDependencies": {
     "concurrently": "^9.2.0"

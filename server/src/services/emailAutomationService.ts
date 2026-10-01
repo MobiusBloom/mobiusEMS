@@ -11,7 +11,7 @@ import { writeAudit } from "./auditService.js";
 import { Tenant } from "../models/Tenant.js";
 import { GmailConnection } from "../models/GmailConnection.js";
 import { gmailAccessToken, googleReady, sendGmailEmail } from "./gmailService.js";
-import { requireTenantId, currentTenantId, runWithTenant } from "../tenancy/tenantContext.js";
+import { requireTenantId, currentTenantId, runAsSystem, runWithTenant } from "../tenancy/tenantContext.js";
 import { deliveryState, normalizeDeliveryEvent, type DeliveryEvent } from "../utils/emailDeliveryState.js";
 
 type WorkflowInput = Pick<EmailWorkflowDocument, "name" | "audience" | "subject" | "message" | "followUp" | "delayDays" | "followUpSubject" | "followUpMessage">;
@@ -321,7 +321,7 @@ export const handleWebhook = async (input: WebhookInput, token?: string) => {
   if (!rawMessageId) return { matched: false };
   const messageIds = [rawMessageId, rawMessageId.replace(/^<|>$/g, ""), `<${rawMessageId.replace(/^<|>$/g, "")}>`];
   const occurredAt = new Date((input.ts_event || input.ts || Date.now() / 1000) * 1000);
-  const match = await EmailDelivery.collection.findOne({ providerMessageId: { $in: messageIds }, ...(input.email && { recipientEmail: String(input.email).toLowerCase() }) }, { projection: { tenantId: 1 } });
+  const match = await runAsSystem(() => EmailDelivery.collection.findOne({ providerMessageId: { $in: messageIds }, ...(input.email && { recipientEmail: String(input.email).toLowerCase() }) }, { projection: { tenantId: 1 } }));
   if (!match?.tenantId) return { matched: false };
   return runWithTenant(match.tenantId, async () => {
     await recordDeliveryEvent(match._id, { type: event, occurredAt, ...(input.reason && { reason: input.reason }) });
@@ -329,7 +329,7 @@ export const handleWebhook = async (input: WebhookInput, token?: string) => {
   });
 };
 export const unsubscribe = async (token: string) => {
-  const match = await VendorContact.collection.findOne({ unsubscribeToken: token }, { projection: { tenantId: 1 } });
+  const match = await runAsSystem(() => VendorContact.collection.findOne({ unsubscribeToken: token }, { projection: { tenantId: 1 } }));
   if (!match?.tenantId) throw new AppError("This unsubscribe link is invalid", 404);
   await runWithTenant(match.tenantId, async () => {
     const contact = await VendorContact.findOneAndUpdate({ _id: match._id }, { $set: { status: "UNSUBSCRIBED" } }, { new: true }).select("_id");
