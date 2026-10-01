@@ -33,7 +33,9 @@ const activeAt = (at: Date) => ({
   effectiveFrom: { $lte: at },
   $or: [{ effectiveTo: { $exists: false } }, { effectiveTo: { $gte: at } }],
 });
-const uniqueIds = (ids: Types.ObjectId[]) => [...new Map(ids.map((id) => [id.toString(), id])).values()];
+// Lean PostgreSQL documents contain string IDs. Normalize at the scope boundary
+// so analytics and territory services receive the ObjectIds promised by this type.
+const uniqueIds = (ids: readonly (Types.ObjectId | string)[]): Types.ObjectId[] => [...new Map(ids.map((id) => [id.toString(), id instanceof Types.ObjectId ? id : new Types.ObjectId(id)])).values()];
 
 const managedEmployeeIds = async (manager: Types.ObjectId): Promise<Types.ObjectId[]> => {
   const seen = new Map([[manager.toString(), manager]]);
@@ -82,11 +84,11 @@ export const resolveSalesScope = async (viewer: SessionUser, at = new Date()): P
       }).distinct("_id"),
       GeoNode.find({ isActive: true }).distinct("_id"),
     ]);
-    return { level, allowedEmployeeIds: employees, allowedTerritoryIds: territories, allowedGeoIds: geography };
+    return { level, allowedEmployeeIds: uniqueIds(employees), allowedTerritoryIds: uniqueIds(territories), allowedGeoIds: uniqueIds(geography) };
   }
 
   const employee = await Employee.findOne({ user: viewer.id, isActive: true }).select("_id department").lean();
-  if (!employee || !salesDepartments.some((id) => id.equals(employee.department))) {
+  if (!employee || !salesDepartments.some((id) => String(id) === String(employee.department))) {
     throw new AppError("Sales capability is not enabled for this employee", 403, "SALES_NOT_ENABLED");
   }
 

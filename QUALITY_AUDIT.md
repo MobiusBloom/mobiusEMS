@@ -7,6 +7,7 @@ This audit covers automated tests, real PostgreSQL integration scenarios in an i
 - Existing projected PostgreSQL documents now merge their loaded fields with the stored record before validation. Saving no longer removes hidden credentials or excluded fields. Explicitly cleared fields are removed, and hydration does not reintroduce excluded schema defaults.
 - Public email webhooks and unsubscribe links discover their owning tenant in system context, then perform updates inside that tenant's context. Invalid webhook tokens are rejected before lookup.
 - Dashboard analytics and automatic reporting hierarchy support the string identifiers returned by PostgreSQL lean queries.
+- Sales scopes normalize lean employee, territory, and geography identifiers into the ObjectIds promised to downstream services. This fixes employee territory analytics, territory employee listings, and capacity views.
 - Registration cannot use an OTP token at the legacy completion endpoint. OTP digests are keyed and bound to the organization and email, preventing offline enumeration of six-digit codes from a readable registration token. Production mail failures no longer reveal verification codes; SMTP failure can fall through to Brevo.
 - The server binds its HTTP port before database and tenant initialization. APIs return 503 with Retry-After while initialization is pending; health reports readiness truthfully. Shutdown also stops expired-record cleanup.
 - Error responses include a stable code in production without exposing stack traces.
@@ -18,14 +19,16 @@ This audit covers automated tests, real PostgreSQL integration scenarios in an i
 | Check | Result |
 | --- | --- |
 | Frontend regression tests | 2 passed |
-| Server tests | 170 passed |
+| Server tests | 171 passed |
 | Full workspace TypeScript check | Passed |
 | Full production build | Passed; existing large-chunk warning remains |
 | npm audit --omit=dev | 0 reported vulnerabilities |
 | Isolated PostgreSQL integration | 11 scenarios passed; temporary schema removed |
 | Production API audit before changes | 256 requests: 202 HTTP 200, 43 HTTP 403, 8 HTTP 422, 2 HTTP 401, 1 HTTP 500 |
+| First updated release, static routes | 256 requests: 203 HTTP 200, 43 HTTP 403, 8 HTTP 422, 2 HTTP 401; no server errors |
+| Record and report detail audit | 108 requests; identified 3 employee sales-scope failures, fixed by identifier normalization |
 
-The production 500 was dashboard analytics calling `.equals()` on a PostgreSQL string identifier. The permission and validation responses are reported as responses, not automatically classified as feature failures. APIs requiring record IDs or additional query inputs were not exhaustively exercised by the static-route audit.
+The first production 500 was dashboard analytics calling `.equals()` on a PostgreSQL string identifier. A subsequent detail audit identified the same runtime mismatch in employee sales scopes. The permission and validation responses are reported as responses, not automatically classified as feature failures. The detail audit sampled employee profiles, assessments, task activity and lead summaries, geography, territories, target history, sales activities, and ten report categories. It did not exhaust every possible record or query combination.
 
 The integration scenarios verified correct and incorrect OTPs, rejection of the OTP completion bypass, duplicate registration, email-only login, wrong-password rejection, anonymous access rejection, employee creation/edit/profile access, credential preservation, employee permission enforcement, personal todo creation/completion/deletion, email-only password recovery/reset, reset-token replay rejection, cross-tenant read/write rejection, session refresh/logout revocation, and separate platform-owner login. Mail delivery was mocked; no test emails were sent to real users.
 
@@ -39,6 +42,6 @@ For real PostgreSQL integration checks, build the server first, set `AUDIT_DATAB
 
 The repository-wide lint gate is still failing: client 14 errors and 7 warnings; server 83 errors. Most errors are legacy explicit-any casts and unused variables; client warnings include React effect dependencies. Rules were not globally relaxed. These diagnostics require a separate typed-code cleanup and associated feature verification before the lint gate can be claimed green.
 
-The frontend build still warns about large JavaScript chunks. Paid AI provider calls, real external mail delivery, voice transcription runtime, exhaustive file uploads, exhaustive browser layouts, load testing, and concurrent multi-worker write races were not validated end to end by this pass. Successful mocked mail tests do not prove provider deliverability. Production workforce records were not changed by the API audit.
+The frontend build still warns about large JavaScript chunks. Paid AI provider calls, real external mail delivery, voice transcription runtime, exhaustive file uploads, exhaustive browser layouts, load testing, and concurrent multi-worker write races were not validated end to end by this pass. Successful mocked mail tests do not prove provider deliverability. The production API audit sent GET requests only; known attendance-correction GET behavior was excluded. Mutation scenarios ran in the isolated schema.
 
-Deployment verification is recorded below after the final production checks.
+Final deployment verification and request-by-request CSV results are saved separately as audit artifacts.

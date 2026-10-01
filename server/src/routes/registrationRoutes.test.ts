@@ -96,7 +96,7 @@ test("registration completion rejects an OTP token without verifying its code", 
   await new Promise<void>((resolve) => server.once("listening", resolve));
   const address = server.address();
   assert.ok(address && typeof address !== "string");
-  const token = jwt.sign({ purpose: "organization-registration-otp" }, env.JWT_ACCESS_SECRET, {
+  const token = jwt.sign({ purpose: "organization-registration-otp", name: "Test Company", slug: "test-company", industry: "Software", companySize: "1-10", country: "India", referralSource: "Website", primaryUseCase: "HR management", adminName: "New Admin", adminEmail: "new-admin@example.com", otpHash: "unverified" }, env.JWT_ACCESS_SECRET, {
     audience: "organization-registration-otp", issuer: "mobius-ems", expiresIn: "15m",
   });
   try {
