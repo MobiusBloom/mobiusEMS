@@ -14,7 +14,7 @@ import { Employee } from "../models/Employee.js";
 import { SalesConfiguration } from "../models/SalesConfiguration.js";
 import { defaultSalesConfiguration } from "./salesConfigurationService.js";
 import { AppError } from "../utils/AppError.js";
-import { runWithTenant } from "../tenancy/tenantContext.js";
+import { runAsSystem, runWithTenant } from "../tenancy/tenantContext.js";
 import { seedTenantRoles, seedTenantOrganizationPresets, seedTenantGeography } from "../jobs/seedSuperAdmin.js";
 
 interface CreateTenantInput {
@@ -201,7 +201,7 @@ export const getTenantSubscriptionSummary = async (tenantId: string): Promise<Te
   };
 };
 
-export const platformAnalytics = async () => {
+export const platformAnalytics = async () => runAsSystem(async () => {
   const [tenants, usersByTenant, employeesByTenant, adminsByTenant, monthlyOrganizations, monthlyUsers] = await Promise.all([
     Tenant.find().select(publicFields).sort({ createdAt: -1 }).lean(),
     User.collection.aggregate<{ _id: unknown; count: number }>([{ $match: { isActive: true } }, { $group: { _id: "$tenantId", count: { $sum: 1 } } }]).toArray(),
@@ -219,7 +219,7 @@ export const platformAnalytics = async () => {
     growth: [...new Set([...monthlyOrganizations.map((item) => item._id), ...monthlyUsers.map((item) => item._id)])].sort().map((month) => ({ month, organizations: monthlyOrganizations.find((item) => item._id === month)?.count ?? 0, users: monthlyUsers.find((item) => item._id === month)?.count ?? 0 })),
     items,
   };
-};
+});
 
 export const updateTenantStatus = async (id: string, status: Exclude<TenantStatus, "PROVISIONING">, actorTenantId: string) => {
   if (id === actorTenantId && status === "SUSPENDED") throw new AppError("You cannot suspend the organization used by your current session", 409, "CURRENT_TENANT");
