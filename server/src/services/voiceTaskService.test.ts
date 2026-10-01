@@ -1,6 +1,40 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { detectMentionedVoiceHours, detectVoiceAction, detectVoiceHours, detectVoiceStatusIntent, extractVoiceAssigner, parseVoiceDeadline, splitVoiceAssignments } from "./voiceTaskService.js";
+import { buildDrafts, resolveSpokenProject, detectMentionedVoiceHours, detectVoiceAction, detectVoiceHours, detectVoiceStatusIntent, extractVoiceAssigner, parseVoiceDeadline, splitVoiceAssignments } from "./voiceTaskService.js";
+
+const voiceOptions = {
+  projects: [{ id: "product", label: "Product Development Project", detail: "PD" }, { id: "finance", label: "Finance Project" }],
+  employees: [{ id: "rahul", label: "Rahul Sharma", detail: "112" }], tasks: []
+};
+const manager = { id: "manager", role: "SUPER_ADMIN", permissions: [] };
+
+test("screenshot command preserves the title and detects its project and assignee", () => {
+  const result = buildDrafts("LLM find tuning towers are sign to Rahul Sharma and the project belongs to product development project", manager, voiceOptions);
+  assert.equal(result.drafts.length, 1);
+  assert.equal(result.drafts[0]?.name, "LLM find tuning towers");
+  assert.equal(result.drafts[0]?.project, "product");
+  assert.equal(result.drafts[0]?.assignedEmployee, "rahul");
+});
+
+test("project names tolerate omitted suffixes, codes and small transcription errors", () => {
+  for (const text of ["use product development", "under PD", "product developement project"]) {
+    assert.equal(resolveSpokenProject(text, voiceOptions.projects)?.id, "product", text);
+  }
+  assert.equal(resolveSpokenProject("use an unknown project", voiceOptions.projects), undefined);
+  assert.equal(resolveSpokenProject("product development", [...voiceOptions.projects, { id: "other", label: "Product Development" }]), undefined);
+});
+
+test("task metadata remains available after title cleanup", () => {
+  const draft = buildDrafts("Create a task to prepare report assign to Rahul Sharma and the project belongs to product development project by tomorrow high priority estimated at two hours", manager, voiceOptions).drafts[0];
+  assert.equal(draft?.name, "report");
+  assert.equal(draft?.priority, "HIGH");
+  assert.equal(draft?.estimatedHours, 2);
+});
+
+test("name-first assignments retain their task text", () => {
+  const draft = buildDrafts("Rahul Sharma prepare report by tomorrow", manager, voiceOptions).drafts[0];
+  assert.equal(draft?.name, "report");
+});
 
 test("completion intent is detected across supported Indian languages", () => {
   const examples = [

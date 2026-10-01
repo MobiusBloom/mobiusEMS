@@ -120,6 +120,34 @@ const findMention = <T extends { label: string }>(transcript: string, options: T
     .sort((a, b) => b.label.length - a.label.length)[0];
 };
 
+export const resolveSpokenProject = (transcript: string, projects: Option[]) => {
+  const text = normalize(transcript);
+  const ranked = projects.map((project) => {
+    const aliases = [project.label, project.detail ?? "", project.label.replace(/\bproject\b/gi, "")].map(normalize).filter(Boolean);
+    const score = Math.max(...aliases.map((alias) => {
+      if (` ${text} `.includes(` ${alias} `)) return 1;
+      const tokens = text.split(" "); const length = alias.split(" ").length;
+      return Math.max(0, ...tokens.map((_, index) => {
+        const phrase = tokens.slice(index, index + length).join(" ");
+        return alias.length >= 6 ? 1 - editDistance(phrase, alias) / Math.max(phrase.length, alias.length) : 0;
+      }));
+    }));
+    return { project, score };
+  }).sort((a, b) => b.score - a.score);
+  const best = ranked[0]; const next = ranked[1];
+  return best && best.score >= 0.85 && (!next || best.score - next.score >= 0.08) ? best.project : undefined;
+};
+
+const cleanTaskCommand = (transcript: string, employee?: Option) => {
+  let text = transcript;
+  if (employee) {
+    const name = escapeRegularExpression(employee.label);
+    text = text.replace(new RegExp(`\\s*(?:and\\s+)?(?:assign(?:ed)?|are\\s+sign|a\\s+sign)\\s+(?:it\\s+)?to\\s+${name}\\b`, "i"), "");
+  }
+  return text.replace(/\s*(?:and\s+)?(?:the\s+)?project\s+(?:belongs\s+to|is|called|named)\s+.*$/i, "")
+    .replace(/\s+(?:in|under|for)\s+(?:the\s+)?(.+?)\s+project\b.*$/i, "").trim();
+};
+
 const escapeRegularExpression = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const editDistance = (left: string, right: string) => {
   const previous = Array.from({ length: right.length + 1 }, (_, index) => index);
@@ -299,7 +327,7 @@ const loadOptions = async (actor: Actor) => {
   return { projects, employees, tasks };
 };
 
-const buildDraft = (transcript: string, actor: Actor, options: Awaited<ReturnType<typeof loadOptions>>, timezoneOffsetMinutes = 0) => {
+export const buildDraft = (transcript: string, actor: Actor, options: Awaited<ReturnType<typeof loadOptions>>, timezoneOffsetMinutes = 0) => {
   const text = normalize(transcript);
   const statusIntent = detectVoiceStatusIntent(text);
   const exactTask = options.tasks.find((task) => task.detail && text.includes(normalize(task.detail)));
@@ -312,10 +340,10 @@ const buildDraft = (transcript: string, actor: Actor, options: Awaited<ReturnTyp
     const draft: VoiceDraft = { action: "UPDATE_STATUS", task: task?.id, status, actualHours: detectMentionedVoiceHours(text), completionNote: transcript, blockerReason: "OTHER", blockerComment: status === "BLOCKED" ? transcript : undefined };
     return { draft, confidence: Math.min(0.98, 0.55 + (exactTask ? 0.35 : task ? 0.2 : 0)) };
   }
-  const project = findMention(transcript, options.projects) ?? (options.projects.length === 1 ? options.projects[0] : undefined);
+  const project = resolveSpokenProject(transcript, options.projects) ?? (options.projects.length === 1 ? options.projects[0] : undefined);
   const employee = actor.role === "EMPLOYEE" ? options.employees[0] : findMention(transcript, options.employees);
   const draft: VoiceDraft = {
-    action: "CREATE_TASK", name: extractTaskName(transcript), description: transcript, project: project?.id,
+    action: "CREATE_TASK", name: extractTaskName(cleanTaskCommand(transcript, employee)), description: transcript, project: project?.id,
     assignedEmployee: employee?.id, verbalAssigner: extractVoiceAssigner(transcript) || (actor.role === "EMPLOYEE" ? "Manager (voice-reported)" : undefined),
     priority: detectPriority(text), complexity: detectComplexity(text), estimatedHours: detectMentionedVoiceHours(text) ?? 1, deadline: parseVoiceDeadline(transcript, timezoneOffsetMinutes)
   };
@@ -324,12 +352,14 @@ const buildDraft = (transcript: string, actor: Actor, options: Awaited<ReturnTyp
 };
 
 const hasDeadlineSignal = (text: string) => /\b(?:today|tomorrow|day after tomorrow|monday|tuesday|wednesday|thursday|friday|saturday|sunday|20\d{2}-\d{1,2}-\d{1,2}|\d{1,2}(?::\d{2})?\s*(?:a\.?m\.?|p\.?m\.?))\b|आज|कल|परसों/iu.test(text);
-const buildDrafts = (transcript: string, actor: Actor, options: Awaited<ReturnType<typeof loadOptions>>, timezoneOffsetMinutes = 0) => {
+export const buildDrafts = (transcript: string, actor: Actor, options: Awaited<ReturnType<typeof loadOptions>>, timezoneOffsetMinutes = 0) => {
   const single = buildDraft(transcript, actor, options, timezoneOffsetMinutes);
   if (single.draft.action !== "CREATE_TASK" || actor.role === "EMPLOYEE") return { drafts: [single.draft], confidence: single.confidence };
   const assignments = splitVoiceAssignments(transcript, options.employees);
+  // A trailing assignee identifies the owner, not the start of the task title.
+  if (assignments.length === 1 && single.draft.assignedEmployee && /\b(?:assign(?:ed)?|are\s+sign|a\s+sign)\s+(?:it\s+)?to\b/i.test(transcript)) return { drafts: [single.draft], confidence: single.confidence };
   if (!assignments.length) return { drafts: [single.draft], confidence: single.confidence };
-  const sharedProject = findMention(transcript, options.projects) ?? (options.projects.length === 1 ? options.projects[0] : undefined);
+  const sharedProject = resolveSpokenProject(transcript, options.projects) ?? (options.projects.length === 1 ? options.projects[0] : undefined);
   const sharedDeadline = hasDeadlineSignal(transcript) ? parseVoiceDeadline(transcript, timezoneOffsetMinutes) : undefined;
   const results = assignments.map((assignment) => {
     const parsed = buildDraft(assignment.text, actor, options, timezoneOffsetMinutes);
