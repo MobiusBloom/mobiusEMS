@@ -1,9 +1,25 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { Schema, Types } from "mongoose";
-import { buildPostgresPrefilter, castPostgresDistinctValue, postgresModel } from "./postgresModel.js";
+import { buildPostgresPrefilter, castPostgresDistinctValue, postgresModel, synchronizePostgresModels } from "./postgresModel.js";
 import { postgres } from "./postgres.js";
 import { runWithTenant } from "../tenancy/tenantContext.js";
+
+test("active-only unique indexes release deleted titles and replace legacy indexes", async (context) => {
+  const schema = new Schema({ title: String, isActive: Boolean });
+  schema.index({ title: 1 }, { unique: true, partialFilterExpression: { isActive: true }, collation: { locale: "en", strength: 2 } });
+  postgresModel("ReusableDeletedTitle", schema, true);
+  const statements: string[] = [];
+  context.mock.method(postgres, "query", async (sql: string) => { statements.push(sql); return { rows: [] }; });
+  await synchronizePostgresModels();
+  const create = statements.findIndex((sql) => sql.includes("CREATE UNIQUE INDEX") && sql.includes("reusabledeletedtitles"));
+  assert.ok(create >= 0);
+  assert.match(statements[create]!, /tenant_id, lower\(document#>>'\{title\}'\)/);
+  assert.match(statements[create]!, /document#>>'\{isActive\}' = 'true'/);
+  assert.match(statements[create]!, /partial_v2/);
+  const drop = statements.findIndex((sql) => sql.includes("DROP INDEX") && sql.includes("reusabledeletedtitles_title_unique_idx"));
+  assert.ok(drop > create, "keep the old uniqueness constraint until the corrected index exists");
+});
 
 test("nested tenant-scoped population retains scope before applying selected fields", async (context) => {
   const tenantId = new Types.ObjectId();

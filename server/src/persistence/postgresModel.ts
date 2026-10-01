@@ -598,8 +598,22 @@ export const synchronizePostgresModels = async (): Promise<void> => {
       if (!paths.length) continue;
       const index = `${entry.table}_${paths.join("_")}_unique_idx`.replace(/[^a-zA-Z0-9_]/g, "_").slice(0, 60);
       if (createdUniqueIndexes.has(index)) continue;
-      const columns = [...(Object.hasOwn(fields, "tenantId") || entry.tenantScoped ? ["tenant_id"] : []), ...paths.map((path) => `(document#>>'{${path.split(".").join(",")}}')`)];
-      const where = paths.map((path) => `document#>>'{${path.split(".").join(",")}}' IS NOT NULL`).join(" AND ");
+      const insensitive = options.collation?.strength === 2;
+      const expression = (path: string) => `document#>>'{${path.split(".").join(",")}}'`;
+      const columns = [...(Object.hasOwn(fields, "tenantId") || entry.tenantScoped ? ["tenant_id"] : []), ...paths.map((path) => insensitive ? `lower(${expression(path)})` : `(${expression(path)})`)];
+      const predicates = paths.map((path) => `${expression(path)} IS NOT NULL`);
+      if (options.partialFilterExpression) {
+        for (const [path, value] of Object.entries(options.partialFilterExpression)) {
+          if (!/^[a-zA-Z0-9_.]+$/.test(path) || !["string", "number", "boolean"].includes(typeof value)) throw new Error(`Unsupported partial unique index on ${entry.name}`);
+          predicates.push(`${expression(path)} = '${String(value).replaceAll("'", "''")}'`);
+        }
+        // Build the corrected index before removing the legacy index that included deleted records.
+        const partialIndex = `${index.slice(0, 50)}_partial_v2`;
+        await postgres.query(`CREATE UNIQUE INDEX IF NOT EXISTS ${quoteIdentifier(partialIndex)} ON ${quoteIdentifier(entry.table)} (${columns.join(", ")}) WHERE ${predicates.join(" AND ")}`);
+        await postgres.query(`DROP INDEX IF EXISTS ${quoteIdentifier(index)}`);
+        continue;
+      }
+      const where = predicates.join(" AND ");
       await postgres.query(`CREATE UNIQUE INDEX IF NOT EXISTS ${quoteIdentifier(index)} ON ${quoteIdentifier(entry.table)} (${columns.join(", ")}) WHERE ${where}`);
     }
   }
