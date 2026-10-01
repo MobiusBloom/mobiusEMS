@@ -7,7 +7,7 @@ import { AppError } from "../utils/AppError.js";
 import { createAccessToken, createRefreshToken, hashToken, verifyRefreshToken } from "./tokenService.js";
 import { writeAudit } from "./auditService.js";
 import type { RoleDocument } from "../models/Role.js";
-import { runWithTenant } from "../tenancy/tenantContext.js";
+import { requireTenantId, runWithTenant } from "../tenancy/tenantContext.js";
 import { requireActiveTenant, resolveTenantForLogin, tenantIdForRefreshTokenHash, type ActiveTenant } from "../tenancy/tenantResolver.js";
 import { Employee } from "../models/Employee.js";
 import { Department } from "../models/Department.js";
@@ -19,6 +19,7 @@ import { isPlatformAdminEmail } from "../middleware/platformAdmin.js";
 
 import { DEFAULT_PLAN_CONFIGS } from "@mobius-ems/shared";
 
+const REFRESH_REUSE_GRACE_MS = 30_000;
 type PopulatedUser = Awaited<ReturnType<typeof getPopulatedUser>>;
 const getPopulatedUser = async (id: string) => User.findById(id).populate<{ role: RoleDocument }>("role").exec();
 const sessionUser = async (user: NonNullable<PopulatedUser>, tenant: ActiveTenant): Promise<SessionUser> => {
@@ -107,6 +108,11 @@ export const rotateRefreshToken = async (token: string, request: Request) => {
   const tenant = await requireActiveTenant(tenantId);
   return runWithTenant(tenantId, async () => {
     const existing = await RefreshSession.findOne({ tokenHash });
+    // A token rotated moments ago is a concurrent refresh (another tab or a
+    // parallel request), not theft; fail it without revoking the family.
+    if (existing?.revokedAt && existing.replacedByHash && Date.now() - existing.revokedAt.getTime() < REFRESH_REUSE_GRACE_MS) {
+      throw new AppError("Session was just refreshed", 401, "INVALID_REFRESH_TOKEN");
+    }
     if (!existing || existing.revokedAt) {
       await RefreshSession.updateMany({ family: payload.family, revokedAt: { $exists: false } }, { $set: { revokedAt: new Date() } });
       throw new AppError("Session reuse detected. Please sign in again", 401, "REFRESH_REUSE_DETECTED");
@@ -134,7 +140,7 @@ export const changePassword = async (userId: string, currentPassword: string, ne
   user.passwordHash = await bcrypt.hash(newPassword, 12); user.forcePasswordChange = false; user.passwordChangedAt = new Date(); await user.save();
   await RefreshSession.updateMany({ user: user._id, revokedAt: { $exists: false } }, { $set: { revokedAt: new Date() } });
   await writeAudit({ user: user._id, action: "PASSWORD_CHANGED", entityType: "User", entityId: user.id, ipAddress: request.ip, userAgent: request.get("user-agent") });
-  return sessionUser(user, await requireActiveTenant(user.get("tenantId").toString()));
+  return sessionUser(user, await requireActiveTenant(requireTenantId().toString()));
 };
 
 export const getSessionUser = async (userId: string, tenant: ActiveTenant): Promise<SessionUser> => {

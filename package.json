@@ -23,6 +23,7 @@
     "pretypecheck": "npm run build -w shared",
     "typecheck": "npm run typecheck -w shared && npm run typecheck -w client && npm run typecheck -w server",
     "seed": "npm run seed -w server",
+    "seed:whalexy-demo": "npm run seed:whalexy-demo -w server --",
     "cleanup:demo": "npm run cleanup:demo -w server",
     "cleanup:sales-demo": "npm run cleanup:sales-demo -w server",
     "backup": "npm run backup -w server --",

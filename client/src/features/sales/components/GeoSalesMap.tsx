@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { GeographicRollupNode, GeoNodeDto, HeatmapPointTuple } from "@mobius-ems/shared";
 import { Circle, CircleMarker, MapContainer, Marker, Popup, TileLayer, useMap } from "react-leaflet";
 import L from "leaflet";
@@ -141,6 +141,7 @@ export const GeoSalesMap = ({
   metricLabel,
   metricValue,
 }: GeoSalesMapProps) => {
+  const [showLocationSummary, setShowLocationSummary] = useState(false);
   const handleSelect = (node: GeographicRollupNode) => {
     onSelectNode?.(node);
     onSelect?.(node._id);
@@ -192,15 +193,37 @@ export const GeoSalesMap = ({
 
   const locatedNodes = filteredNodes.filter((n) => n.location?.coordinates?.length === 2);
 
+  if (showLocationSummary || !locatedNodes.length) {
+    return (
+      <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-soft">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <div><h2 className="font-semibold text-slate-900">Sales location summary</h2><p className="text-sm text-slate-500" role="status">View location data even when the map is unavailable.</p></div>
+          <button type="button" className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold text-teal-700" onClick={() => setShowLocationSummary(false)}>Try map again</button>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {filteredNodes.map((node) => (
+            <button type="button" key={node._id} onClick={() => handleSelect(node)} className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-left hover:border-teal-600 focus-visible:outline-2 focus-visible:outline-teal-600">
+              <p className="font-semibold text-slate-900">{node.name}</p><p className="text-xs text-slate-500">{node.type} · {node.code}</p>
+              <p className="mt-3 text-sm text-slate-700">{node.leadCount} leads · {node.customerCount} customers</p>
+              <p className="mt-1 text-sm font-semibold text-teal-700">₹{node.actualRevenue.toLocaleString("en-IN")} revenue</p>
+            </button>
+          ))}
+        </div>
+        {!filteredNodes.length && <p className="py-6 text-sm text-slate-500">No locations at this level. Choose All levels to explore this scope.</p>}
+      </section>
+    );
+  }
+
   return (
     <div className="relative isolate z-0 h-[520px] w-full overflow-hidden rounded-2xl border border-slate-200 bg-slate-100 shadow-soft">
+      <button type="button" onClick={() => setShowLocationSummary(true)} className="absolute right-3 top-3 z-[1000] rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-teal-700 shadow-sm">Location summary</button>
       <MapContainer
         center={[21.5, 78.5]}
         zoom={4}
         className="h-full w-full"
         scrollWheelZoom
       >
-        <TileLayer {...salesMapTiles} />
+        <TileLayer {...salesMapTiles} eventHandlers={{ tileerror: () => setShowLocationSummary(true) }} />
         <MapPanToSelected nodes={nodes} selectedId={selectedId} />
 
         {/* 1. Canvas Density Heatmap Layer */}

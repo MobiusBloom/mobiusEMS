@@ -168,24 +168,27 @@ export interface TargetPerformanceInput {
   officialTarget: number;
   actual: number;
   commitment?: number;
-  periodStart: Date;
-  periodEnd: Date;
+  periodStart: Date | string;
+  periodEnd: Date | string;
   now?: Date;
   overachievementThreshold?: number;
   compensationRule?: CompensationRuleConfig;
 }
 export const calculateTargetPerformance = (input: TargetPerformanceInput) => {
   const now = input.now ?? new Date();
+  const periodStart = new Date(input.periodStart);
+  const periodEnd = new Date(input.periodEnd);
+  if (!Number.isFinite(periodStart.getTime()) || !Number.isFinite(periodEnd.getTime()) || periodEnd < periodStart) throw new Error("Invalid target period");
   const target = Math.max(0, input.officialTarget);
   const actual = Math.max(0, input.actual);
   const progress = calculateTargetProgress(target, actual);
-  const totalDays = Math.max(1, Math.ceil((input.periodEnd.getTime() - input.periodStart.getTime()) / 86400000) + 1);
-  const elapsedDays = Math.max(0, Math.min(totalDays, Math.ceil((Math.min(now.getTime(), input.periodEnd.getTime()) - input.periodStart.getTime()) / 86400000) + 1));
-  const daysRemaining = Math.max(0, Math.ceil((input.periodEnd.getTime() - now.getTime()) / 86400000));
+  const totalDays = Math.max(1, Math.ceil((periodEnd.getTime() - periodStart.getTime()) / 86400000) + 1);
+  const elapsedDays = Math.max(0, Math.min(totalDays, Math.ceil((Math.min(now.getTime(), periodEnd.getTime()) - periodStart.getTime()) / 86400000) + 1));
+  const daysRemaining = Math.max(0, Math.ceil((periodEnd.getTime() - now.getTime()) / 86400000));
   const achievementPercentage = progress.achievementPercentage;
   const projectedPeriodRevenue = elapsedDays > 0 ? Number((actual / elapsedDays * totalDays).toFixed(2)) : 0;
   const projectedAchievementPercentage = percentage(projectedPeriodRevenue, target);
-  const status: TargetRiskStatus = now < input.periodStart ? "NOT_STARTED" : now > input.periodEnd ? (achievementPercentage > (input.overachievementThreshold ?? 100) ? "EXCEEDED" : achievementPercentage >= 100 ? "ACHIEVED" : "CLOSED") : achievementPercentage > (input.overachievementThreshold ?? 100) ? "EXCEEDED" : achievementPercentage >= 100 ? "ACHIEVED" : projectedAchievementPercentage >= 100 ? "ON_TRACK" : projectedAchievementPercentage >= 75 ? "AT_RISK" : "CRITICAL";
+  const status: TargetRiskStatus = now < periodStart ? "NOT_STARTED" : now > periodEnd ? (achievementPercentage > (input.overachievementThreshold ?? 100) ? "EXCEEDED" : achievementPercentage >= 100 ? "ACHIEVED" : "CLOSED") : achievementPercentage > (input.overachievementThreshold ?? 100) ? "EXCEEDED" : achievementPercentage >= 100 ? "ACHIEVED" : projectedAchievementPercentage >= 100 ? "ON_TRACK" : projectedAchievementPercentage >= 75 ? "AT_RISK" : "CRITICAL";
   const payout = calculateCompensationPayout(input.compensationRule, actual, target);
 
   return {

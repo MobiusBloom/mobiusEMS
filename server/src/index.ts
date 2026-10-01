@@ -1,6 +1,7 @@
 import { createServer } from "node:http";
 import { createApp } from "./app.js";
 import { connectDatabase, disconnectDatabase } from "./config/database.js";
+import { purgeExpiredPostgresDocuments } from "./persistence/postgresModel.js";
 import { env } from "./config/env.js";
 import { seedOrganization, seedTenantGeography, seedTenantRoles } from "./jobs/seedSuperAdmin.js";
 import { initializeEmailAutomation, runEmailAutomationCycle } from "./services/emailAutomationService.js";
@@ -8,6 +9,7 @@ import { runTargetReminderCycle } from "./services/targetReminderService.js";
 import { runDocumentExpiryCycle } from "./services/documentExpiryService.js";
 import { Tenant } from "./models/Tenant.js";
 import { runWithTenant } from "./tenancy/tenantContext.js";
+import { seedWhalexyDemo } from "./jobs/seedWhalexyDemo.js";
 
 const start = async (): Promise<void> => {
   // Do not accept traffic until tenant migration, indexes and baseline roles are ready.
@@ -16,14 +18,24 @@ const start = async (): Promise<void> => {
   await seedOrganization(defaultTenantId);
   const tenantIds = await Tenant.find({ _id: { $ne: defaultTenantId } }).distinct("_id");
   for (const tenantId of tenantIds) await runWithTenant(tenantId, async () => { await seedTenantRoles(); await seedTenantGeography(); });
-
   const server = createServer(createApp());
-  server.listen(env.PORT, () => console.log(`MobiusEMS listening on port ${env.PORT}`));
+  server.listen(env.PORT, () => {
+    console.log(`MobiusEMS listening on port ${env.PORT}`);
+    // Demo setup can be slow or wait on another worker's lock. Serve traffic first.
+    if (env.WHALEXY_DEMO_ENABLED) {
+      void seedWhalexyDemo()
+        .then((result) => console.log("Whalexy demo verified", result))
+        .catch((error: unknown) => console.error("Whalexy demo provisioning failed; existing organizations remain available", error));
+    }
+  });
   void initializeEmailAutomation().catch((error: unknown) => console.error("Brevo email automation initialization failed", error));
   const automationTimer = setInterval(() => void runEmailAutomationCycle(), 60_000); automationTimer.unref();
   const reminderTimer = setInterval(() => void runTargetReminderCycle(), 300_000); reminderTimer.unref();
   void runDocumentExpiryCycle().catch((error: unknown) => console.error("Document expiry check failed", error));
   const documentExpiryTimer = setInterval(() => void runDocumentExpiryCycle().catch((error: unknown) => console.error("Document expiry check failed", error)), 3_600_000); documentExpiryTimer.unref();
+  const purgeExpired = () => void purgeExpiredPostgresDocuments().catch((error: unknown) => console.error("Expired record cleanup failed", error));
+  purgeExpired();
+  const purgeTimer = setInterval(purgeExpired, 3_600_000); purgeTimer.unref();
 
   let shuttingDown = false;
   const shutdown = (signal: string) => {

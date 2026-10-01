@@ -138,8 +138,12 @@ export const GeographicSalesPage = () => {
 
   const mapNodes = useMemo(() => {
     if (!currentNode) return [];
-    if (currentNode._id === "global" || currentNode.type === "GLOBAL") return childrenNodes;
-    return [currentNode, ...childrenNodes];
+    const nodes = currentNode._id === "global" || currentNode.type === "GLOBAL" ? childrenNodes : [currentNode, ...childrenNodes];
+    return nodes.map((node) => {
+      if (node.type !== "COUNTRY" || node.location?.coordinates?.length === 2) return node;
+      const country = countryMaster.find((item) => item.name.common.toLowerCase() === node.name.toLowerCase());
+      return country ? { ...node, location: { type: "Point" as const, coordinates: [country.latlng[1], country.latlng[0]] as [number, number] } } : node;
+    });
   }, [currentNode, childrenNodes]);
 
   // Handle drilldown into a child node
@@ -304,9 +308,12 @@ export const GeographicSalesPage = () => {
             {intelligenceQuery.isLoading ? (
               <Skeleton className="h-[520px] w-full rounded-2xl" />
             ) : intelligenceQuery.isError ? (
-              <div className="rounded-2xl border border-rose-200 bg-rose-50 p-6 text-rose-800">
-                <p className="font-semibold">Failed to load geographic intelligence data</p>
-                <p className="text-sm mt-1">{intelligenceQuery.error.message}</p>
+              <div className="space-y-4">
+                <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-5 text-amber-900">
+                  <div><p className="font-semibold">Detailed geography is temporarily unavailable</p><p className="mt-1 text-sm">Country sales summary is available below.</p></div>
+                  <Button variant="secondary" onClick={() => void intelligenceQuery.refetch()}>Try again</Button>
+                </div>
+                <CountrySales />
               </div>
             ) : (
               <GeoSalesMap
