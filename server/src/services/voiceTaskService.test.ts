@@ -8,6 +8,29 @@ const voiceOptions = {
 };
 const manager = { id: "manager", role: "SUPER_ADMIN", permissions: [] };
 
+test("a time budget to complete a new task shows project and deadline fields", () => {
+  const transcript = "Rahul Sharma there is an LM fine tuning task in the people development project you have four hours to complete it";
+  const options = { ...voiceOptions, projects: [{ id: "people", label: "People Development Project" }, ...voiceOptions.projects] };
+  const before = Date.now();
+  const draft = buildDrafts(transcript, manager, options).drafts[0];
+  assert.equal(draft?.action, "CREATE_TASK");
+  assert.equal(draft?.project, "people");
+  assert.equal(draft?.assignedEmployee, "rahul");
+  assert.equal(draft?.name, "LM fine tuning task");
+  assert.equal(draft?.estimatedHours, 4);
+  const deadline = new Date(draft!.deadline!).getTime();
+  assert.ok(deadline >= before + 4 * 3_600_000 && deadline <= Date.now() + 4 * 3_600_000);
+});
+
+test("relative deadlines differ from hours already worked", () => {
+  const now = new Date("2026-10-01T10:00:00Z");
+  for (const command of ["you have four hours to complete it", "complete the report within 4 hours", "finish in four hours"]) {
+    assert.equal(parseVoiceDeadline(command, -330, now), "2026-10-01T14:00:00.000Z");
+    assert.equal(detectVoiceAction(command), "CREATE_TASK");
+  }
+  assert.equal(detectVoiceAction("I completed the report in four hours"), "UPDATE_STATUS");
+});
+
 test("screenshot command preserves the title and detects its project and assignee", () => {
   const result = buildDrafts("LLM find tuning towers are sign to Rahul Sharma and the project belongs to product development project", manager, voiceOptions);
   assert.equal(result.drafts.length, 1);

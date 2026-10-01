@@ -47,7 +47,7 @@ const overlap = (left: string, right: string) => {
 };
 const containsAny = (text: string, phrases: readonly string[]) => phrases.some((phrase) => text.includes(normalize(phrase)));
 const PROSPECTIVE_COMPLETION_PHRASES = [
-  "have to complete", "need to complete", "must complete", "have to finish", "need to finish", "complete by", "finish by",
+  "have to complete", "need to complete", "must complete", "have to finish", "need to finish", "complete by", "finish by", "to complete", "to finish", "complete within", "finish within",
   "पूरा करना है", "खत्म करना है", "সম্পন্ন করতে হবে", "শেষ করতে হবে", "முடிக்க வேண்டும்", "பூர்த்தி செய்ய வேண்டும்",
   "పూర్తి చేయాలి", "ముగించాలి", "पूर्ण करायचे", "પૂર્ણ કરવાનું", "ಪೂರ್ಣಗೊಳಿಸಬೇಕು", "പൂർത്തിയാക്കണം", "ਪੂਰਾ ਕਰਨਾ ਹੈ", "مکمل کرنا ہے"
 ] as const;
@@ -65,7 +65,7 @@ const STATUS_PHRASES = {
 } as const;
 export const detectVoiceStatusIntent = (transcript: string): keyof typeof STATUS_PHRASES | undefined => {
   const text = normalize(transcript);
-  if (containsAny(text, PROSPECTIVE_COMPLETION_PHRASES)) return undefined;
+  if (containsAny(text, PROSPECTIVE_COMPLETION_PHRASES) || (/\b(?:complete|finish)\b/i.test(text) && extractRelativeDeadlineHours(transcript) !== undefined)) return undefined;
   return containsAny(text, STATUS_PHRASES.complete) ? "complete" : containsAny(text, STATUS_PHRASES.blocked) ? "blocked" : containsAny(text, STATUS_PHRASES.reopen) ? "reopen" : containsAny(text, STATUS_PHRASES.cancel) ? "cancel" : containsAny(text, STATUS_PHRASES.start) ? "start" : undefined;
 };
 
@@ -76,6 +76,8 @@ export const detectVoiceAction = (transcript: string): VoiceDraft["action"] => {
 
 export const parseVoiceDeadline = (transcript: string, timezoneOffsetMinutes = 0, now = new Date()) => {
   const text = normalize(transcript);
+  const relativeHours = extractRelativeDeadlineHours(transcript);
+  if (relativeHours !== undefined) return new Date(now.getTime() + relativeHours * 3_600_000).toISOString();
   const localNow = new Date(now.getTime() - timezoneOffsetMinutes * 60_000);
   const date = new Date(localNow); date.setUTCHours(17, 0, 0, 0);
   let hasExplicitDate = false;
@@ -104,10 +106,12 @@ const extractTaskName = (transcript: string) => {
   const markers = [/(?:my|the|a) task is to\s+/i, /(?:i\s+)?(?:have|need) to\s+/i, /(?:manager|lead|supervisor|boss|.+?)\s+(?:asked|told) me to\s+/i, /(?:assigned me|assigned to me)\s+/i, /task (?:of|to|called)\s+/i, /(?:create|add) (?:a )?(?:new )?task (?:to|for|called)?\s*/i];
   for (const marker of markers) { const match = name.match(marker); if (match?.index !== undefined) { name = name.slice(match.index + match[0].length); break; } }
   name = name
+    .replace(/^there\s+is\s+(?:an?\s+)?/i, "")
     .replace(/^(?:complete|finish|do|prepare|submit)\s+/i, "")
     .replace(/\s+(?:by|before|due(?: on)?|deadline(?: is)?)\s+(?:(?:today|tomorrow|day after tomorrow|monday|tuesday|wednesday|thursday|friday|saturday|sunday|20\d{2}-\d{1,2}-\d{1,2})\b|\d{1,2}(?::\d{2})?\s*(?:a\.?m\.?|p\.?m\.?)).*$/i, "")
     .replace(/\s+(?:with\s+)?(?:low|medium|high|critical)\s+priority.*$/i, "")
     .replace(/\s+estimated\s+(?:at\s+)?\d+(?:\.\d+)?\s*hours?.*$/i, "")
+    .replace(/\s+(?:you\s+have|within|in)\s+\S+\s+hours?\b.*$/i, "")
     .replace(/^assign\s+[a-z][a-z\s'-]{1,80}?\s+(?:the\s+)?(?:task\s+)?(?:of|to)\s+/i, "")
     .trim();
   return name.slice(0, 200) || "Voice-created task";
@@ -252,6 +256,14 @@ const numberWords: Array<[number, string[]]> = [[1, ["one", "एक", "এক", 
 export const detectVoiceHours = (transcript: string) => { const text = normalize(transcript); if (!containsAny(text, hourUnits)) return 1; const numeric = text.match(/\b(\d+(?:\.\d+)?)\b/u); if (numeric) return Number(numeric[1]); return numberWords.find(([, variants]) => containsAny(text, variants))?.[0] ?? 1; };
 export const detectMentionedVoiceHours = (transcript: string) => containsAny(normalize(transcript), hourUnits) ? detectVoiceHours(transcript) : undefined;
 
+const extractRelativeDeadlineHours = (transcript: string) => {
+  const duration = transcript.match(/\b(?:you\s+have|within|in)\s+(\d+(?:\.\d+)?|one|two|three|four|five|six|seven|eight|nine|ten)\s+hours?\b(?=\s+to\s+(?:complete|finish)|\s+from\s+now|[.!?,]|$)/i)
+    ?? transcript.match(/\b(?:complete|finish)\b.*?\b(?:within|in)\s+(\d+(?:\.\d+)?|one|two|three|four|five|six|seven|eight|nine|ten)\s+hours?\b/i);
+  if (!duration) return undefined;
+  const hours = detectMentionedVoiceHours(`${duration[1]} hours`);
+  return hours && hours > 0 ? hours : undefined;
+};
+
 export const extractVoiceAssigner = (transcript: string) => {
   const patterns = [
     /assigned by\s+(?:the\s+)?(.+?)(?=\s+(?:that|to|by|before|due|with)\b|[.!?]|$)/i,
@@ -351,7 +363,7 @@ export const buildDraft = (transcript: string, actor: Actor, options: Awaited<Re
   return { draft, confidence: Math.min(0.98, confidence) };
 };
 
-const hasDeadlineSignal = (text: string) => /\b(?:today|tomorrow|day after tomorrow|monday|tuesday|wednesday|thursday|friday|saturday|sunday|20\d{2}-\d{1,2}-\d{1,2}|\d{1,2}(?::\d{2})?\s*(?:a\.?m\.?|p\.?m\.?))\b|आज|कल|परसों/iu.test(text);
+const hasDeadlineSignal = (text: string) => extractRelativeDeadlineHours(text) !== undefined || /\b(?:today|tomorrow|day after tomorrow|monday|tuesday|wednesday|thursday|friday|saturday|sunday|20\d{2}-\d{1,2}-\d{1,2}|\d{1,2}(?::\d{2})?\s*(?:a\.?m\.?|p\.?m\.?))\b|आज|कल|परसों/iu.test(text);
 export const buildDrafts = (transcript: string, actor: Actor, options: Awaited<ReturnType<typeof loadOptions>>, timezoneOffsetMinutes = 0) => {
   const single = buildDraft(transcript, actor, options, timezoneOffsetMinutes);
   if (single.draft.action !== "CREATE_TASK" || actor.role === "EMPLOYEE") return { drafts: [single.draft], confidence: single.confidence };
