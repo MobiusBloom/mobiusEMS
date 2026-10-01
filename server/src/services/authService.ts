@@ -61,7 +61,7 @@ export const requestSuperAdminPasswordReset = async (email: string, tenantSlug?:
   let tenant: ActiveTenant;
   try { tenant = await resolveTenantForLogin(email, tenantSlug); } catch { return resetMessage; }
   await runWithTenant(tenant._id, async () => {
-    const user = await User.findOne({ email, isActive: true }).populate<{ role: RoleDocument }>("role");
+    const user = await User.findOne({ email, isActive: true }).select("+passwordHash").populate<{ role: RoleDocument }>("role");
     if (!user || user.role.name !== "SUPER_ADMIN") return;
     const token = randomBytes(32).toString("hex");
     user.passwordResetTokenHash = resetHash(token); user.passwordResetTokenExpiresAt = new Date(Date.now() + 30 * 60 * 1000); await user.save();
