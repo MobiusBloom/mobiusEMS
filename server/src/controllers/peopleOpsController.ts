@@ -30,3 +30,7 @@ export const permissions = async (request: Request, response: Response): Promise
 export const sectionAccess = async (request: Request, response: Response): Promise<void> => { requireSuperAdmin(request); response.json({ success: true, message: "Section access updated", data: { item: await service.updateRoleSectionAccess(String(request.params.id), request.body.sections, request.user!.id) } }); };
 export const administrators = async (request: Request, response: Response): Promise<void> => { requireSuperAdmin(request); response.json({ success: true, message: "Administrators retrieved", data: { items: await service.listAdministrators() } }); };
 export const createAdministrator = async (request: Request, response: Response): Promise<void> => { requireSuperAdmin(request); response.status(201).json({ success: true, message: "Administrator account created", data: await service.createAdministrator(request.body, request.user!.id, { ip: request.ip, userAgent: request.get("user-agent") }) }); };
+
+export const createRole = async (request: Request, response: Response): Promise<void> => { requireSuperAdmin(request); response.status(201).json({ success: true, message: "Role created", data: { item: await service.createRole(request.body, request.user!.id) } }); };
+
+export const assignRole = async (request: Request, response: Response): Promise<void> => { requireSuperAdmin(request); await service.assignRole(String(request.params.id), request.body.email, request.user!.id); response.json({ success: true, message: "Role assigned", data: {} }); };

@@ -40,7 +40,7 @@ const sessionUser = async (user: NonNullable<PopulatedUser>, tenant: ActiveTenan
     tenantName: tenant.name,
     tenantSlug: tenant.slug,
     isPlatformAdmin: user.role.name === "SUPER_ADMIN" && isPlatformAdminEmail(user.email),
-    role: user.role.name,
+    role: (user.role.baseRole ?? user.role.name) as SessionUser["role"],
     permissions: user.role.permissions,
     capabilities: departmentCapabilities,
     forcePasswordChange: user.forcePasswordChange,

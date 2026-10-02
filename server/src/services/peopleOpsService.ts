@@ -1,4 +1,4 @@
-import { randomBytes } from "node:crypto"; import bcrypt from "bcrypt"; import { SECTION_PERMISSIONS, type PermissionName, type SectionPermissionName, type LeaveBalanceItem, type LeavePolicyItem } from "@mobius-ems/shared"; import { Employee } from "../models/Employee.js"; import { LeaveRequest, type LeaveRequestDocument } from "../models/LeaveRequest.js"; import { LeavePolicy, type LeavePolicyDocument } from "../models/LeavePolicy.js"; import { Recognition, type RecognitionDocument } from "../models/Recognition.js"; import { Role } from "../models/Role.js"; import { User } from "../models/User.js"; import { AppError } from "../utils/AppError.js"; import { notify } from "./notificationService.js"; import { writeAudit } from "./auditService.js";
+import { randomBytes } from "node:crypto"; import bcrypt from "bcrypt"; import { ROLES, SECTION_PERMISSIONS, type PermissionName, type SectionPermissionName, type LeaveBalanceItem } from "@mobius-ems/shared"; import { Employee } from "../models/Employee.js"; import { LeaveRequest } from "../models/LeaveRequest.js"; import { LeavePolicy } from "../models/LeavePolicy.js"; import { Recognition, type RecognitionDocument } from "../models/Recognition.js"; import { Role } from "../models/Role.js"; import { User } from "../models/User.js"; import { AppError } from "../utils/AppError.js"; import { notify } from "./notificationService.js"; import { writeAudit } from "./auditService.js";
 const scopedEmployees = async (viewer: { id: string; role: string }) => { if (!["EMPLOYEE","MANAGER"].includes(viewer.role)) return Employee.find({ isActive: true }).distinct("_id"); const own = await Employee.findOne({ user: viewer.id }).select("_id"); return viewer.role === "EMPLOYEE" ? own ? [own._id] : [] : Employee.find({ $or: [{ _id: own?._id }, { reportingManager: own?._id }] }).distinct("_id"); };
 export const listLeaves = async (viewer: { id: string; role: string }) => LeaveRequest.find({ employee: { $in: await scopedEmployees(viewer) } }).populate("employee", "firstName lastName employeeId").populate("reviewedBy", "name").sort({ createdAt: -1 }).lean();
 
@@ -36,7 +36,7 @@ export const listLeavePolicies = async () => {
 
 export const createLeavePolicy = async (input: { name: string; code?: string; quotaDays: number; isPaid?: boolean; description?: string }, actorId: string) => {
   await ensureDefaultLeavePolicies();
-  let code = (input.code?.trim() || input.name.trim().toUpperCase().replace(/[^A-Z0-9]+/g, "_")).replace(/^_+|_+$/g, "");
+  const code = (input.code?.trim() || input.name.trim().toUpperCase().replace(/[^A-Z0-9]+/g, "_")).replace(/^_+|_+$/g, "");
   if (!code) throw new AppError("Invalid policy code", 400);
 
   const existing = await LeavePolicy.findOne({ code, isActive: true });
@@ -227,17 +227,38 @@ export const updateRoleSectionAccess = async (id: string, sections: SectionPermi
 };
 const administratorRoles = ["SUPER_ADMIN", "HR_ADMIN"] as const;
 export const listAdministrators = async () => {
-  const roles = await Role.find({ name: { $in: administratorRoles } }).select("_id");
+  const roles = await Role.find({ $or: [{ name: { $in: administratorRoles } }, { isSystem: false }] }).select("_id");
   return User.find({ role: { $in: roles.map((role) => role._id) } }).select("name email role isActive forcePasswordChange lastLoginAt createdAt").populate("role", "name").sort({ createdAt: -1 }).lean();
 };
-export const createAdministrator = async (input: { name: string; email: string; role: typeof administratorRoles[number] }, actor: string, meta: { ip?: string; userAgent?: string }) => {
-  if (!administratorRoles.includes(input.role)) throw new AppError("Administrator role is not allowed", 422, "INVALID_ADMIN_ROLE");
+export const createAdministrator = async (input: { name: string; email: string; role: string }, actor: string, meta: { ip?: string; userAgent?: string }) => {
   if (await User.exists({ email: input.email })) throw new AppError("An account already uses this email", 409, "EMAIL_EXISTS");
   const role = await Role.findOne({ name: input.role });
   if (!role) throw new AppError("Administrator role was not found; run the seed command", 400, "ROLE_NOT_FOUND");
+  if (role.isSystem && !administratorRoles.includes(role.name as typeof administratorRoles[number])) throw new AppError("Choose an administrator or custom role", 422);
   const password = `Mb!${randomBytes(9).toString("base64url")}7a`;
   const account = await User.create({ name: input.name, email: input.email, passwordHash: await bcrypt.hash(password, 12), role: role._id, isActive: true, forcePasswordChange: true, onboardingComplete: true });
   await writeAudit({ user: actor, action: "ADMINISTRATOR_CREATED", entityType: "User", entityId: account.id, newValue: { name: account.name, email: account.email, role: input.role }, ipAddress: meta.ip, userAgent: meta.userAgent });
   const safeAccount = await User.findById(account._id).select("name email role isActive forcePasswordChange lastLoginAt createdAt").populate("role", "name").lean().orFail();
   return { account: safeAccount, temporaryCredentials: { email: account.email, password } };
+};
+
+export const createRole = async (input: { name: string; description: string; baseRole: import("@mobius-ems/shared").RoleName; permissions: PermissionName[] }, actor: string) => {
+  if (ROLES.includes(input.name as typeof ROLES[number])) throw new AppError("Built-in role names are reserved", 422);
+  if (input.baseRole === "SUPER_ADMIN") throw new AppError("Custom roles cannot inherit Super Admin", 422);
+  if (await Role.exists({ name: input.name })) throw new AppError("A role with this name already exists", 409);
+  const role = await Role.create({ ...input, description: input.description || "Custom role", permissions: [...new Set(input.permissions)], isSystem: false });
+  await writeAudit({ user: actor, action: "ROLE_CREATED", entityType: "Role", entityId: role.id, newValue: input });
+  return role;
+};
+
+export const assignRole = async (id: string, email: string, actor: string) => {
+  const role = await Role.findById(id);
+  if (!role) throw new AppError("Role not found", 404);
+  if (role.name === "SUPER_ADMIN") throw new AppError("Create a Super Admin through administrator creation", 422);
+  const account = await User.findOne({ email, isActive: true }).populate<{ role: { name: string; _id: { toString(): string } } }>("role");
+  if (!account) throw new AppError("Active account not found", 404);
+  if (account.role.name === "SUPER_ADMIN") throw new AppError("Super Admin accounts are protected", 422);
+  const oldValue = account.role._id.toString();
+  await User.updateOne({ _id: account._id }, { $set: { role: role._id } });
+  await writeAudit({ user: actor, action: "ACCOUNT_ROLE_ASSIGNED", entityType: "User", entityId: account.id, oldValue, newValue: role.id });
 };
