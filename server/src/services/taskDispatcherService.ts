@@ -53,12 +53,32 @@ export const resolveDirectoryEmployee = (spoken: string | null | undefined, id: 
 
 export const parseDispatcherJson = (text: string) => {
   const cleaned = text.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
-  let value: unknown;
-  try { value = JSON.parse(cleaned); }
-  catch { throw new AppError("AI returned an invalid task list. Please retry.", 502, "AI_INVALID_RESPONSE"); }
-  const parsed = extractedSchema.safeParse(Array.isArray(value) ? value : (value as { tasks?: unknown })?.tasks);
-  if (!parsed.success) throw new AppError("AI returned an incomplete task list. Please retry.", 502, "AI_INVALID_RESPONSE");
-  return parsed.data;
+  const candidates = [cleaned];
+  let start = -1; let quote = false; let escaped = false; const stack: string[] = [];
+  for (let index = 0; index < cleaned.length; index += 1) {
+    const character = cleaned[index]!;
+    if (quote) {
+      if (escaped) escaped = false;
+      else if (character === "\\") escaped = true;
+      else if (character === '"') quote = false;
+      continue;
+    }
+    if (character === '"' && start >= 0) { quote = true; continue; }
+    if (character === "{" || character === "[") { if (!stack.length) start = index; stack.push(character === "{" ? "}" : "]"); continue; }
+    if (start >= 0 && character === stack.at(-1)) {
+      stack.pop();
+      if (!stack.length) { candidates.push(cleaned.slice(start, index + 1)); start = -1; }
+    }
+  }
+  let parsedJson = false;
+  for (const candidate of [...new Set(candidates)]) {
+    let value: unknown;
+    try { value = JSON.parse(candidate); parsedJson = true; }
+    catch { continue; }
+    const parsed = extractedSchema.safeParse(Array.isArray(value) ? value : (value as { tasks?: unknown })?.tasks);
+    if (parsed.success) return parsed.data;
+  }
+  throw new AppError(parsedJson ? "AI returned an incomplete task list. Please retry." : "AI returned an invalid task list. Please retry.", 502, "AI_INVALID_RESPONSE");
 };
 
 const sourceType = (file?: Express.Multer.File): TaskImportDocument["sourceType"] => {

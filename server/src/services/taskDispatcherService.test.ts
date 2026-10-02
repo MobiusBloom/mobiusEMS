@@ -14,6 +14,12 @@ test("dispatcher accepts fenced structured task output", () => {
   assert.equal(tasks[0]?.priority, "HIGH");
 });
 
+test("dispatcher extracts JSON surrounded by provider reasoning", () => {
+  const tasks = parseDispatcherJson('<think>I will identify each assignment.</think>\nHere is the result:\n{"tasks":[{"snippet":"Vandana prepares payroll","action":"Prepare payroll","assignee":"Vandana","assigneeId":"2","dueDate":null,"priority":"MEDIUM","dependency":null,"confidence":0.86}]}\nDone.');
+  assert.equal(tasks.length, 1);
+  assert.equal(tasks[0]?.assigneeId, "2");
+});
+
 test("dispatcher resolves valid ids and fuzzy unique names", () => {
   assert.equal(resolveDirectoryEmployee("invented", "2", employees).employee?.id, "2");
   assert.equal(resolveDirectoryEmployee("Aayush", undefined, employees).employee?.id, "1");
