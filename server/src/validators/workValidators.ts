@@ -30,3 +30,5 @@ export const voiceCommandSchema = z.object({ params: z.object({ id: objectId }),
   z.object({ drafts: z.array(voiceDraftSchema).min(1).max(25) })
 ]) });
 export const voiceCommandIdSchema = z.object({ params: z.object({ id: objectId }) });
+export const taskDispatcherPreviewSchema = z.object({ body: z.object({ text: z.string().trim().max(100_000).optional(), project: objectId, mode: z.enum(["AUTO_CREATE", "CONFIRM_FIRST"]).default("CONFIRM_FIRST") }) });
+export const taskDispatcherCommitSchema = z.object({ params: z.object({ id: objectId }), body: z.object({ items: z.array(z.object({ extractedTask: objectId, name: z.string().trim().min(2).max(200), description: z.string().trim().max(5000).optional(), assignedEmployee: objectId, dueDate: z.coerce.date(), priority: z.enum(PRIORITIES), estimatedHours: z.number().positive().max(10000).default(1) })).min(1).max(50) }) });
