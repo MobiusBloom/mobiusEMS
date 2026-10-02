@@ -126,13 +126,25 @@ export const previewTaskImport = async (input: { text?: string; file?: Express.M
   try {
     const now = new Date();
     const directory = employees.map((employee) => `${employee.id} | ${employee.label} | ${employee.employeeId}`).join("\n");
-    const generated = await complete({
-      system: "Extract actionable work assignments from the source. Return JSON only as {\"tasks\":[...]}. Each task must contain snippet, action, assignee, assigneeId, dueDate, priority, dependency, confidence. Use only an assigneeId from the directory. Use null when unresolved. dueDate must be an ISO timestamp with +05:30 when a deadline is stated; otherwise null. priority is LOW, MEDIUM, HIGH, or CRITICAL. Split separate instructions. Do not invent work.",
+    const extract = (maxTokens: number) => complete({
+      system: "Extract actionable work assignments from the source. Return JSON only as {\"tasks\":[...]}. Each task must contain snippet, action, assignee, assigneeId, dueDate, priority, dependency, confidence. snippet is a short quote of the source instruction, at most 200 characters. Use only an assigneeId from the directory. Use null when unresolved. dueDate must be an ISO timestamp with +05:30 when a deadline is stated; otherwise null. priority is LOW, MEDIUM, HIGH, or CRITICAL. Split separate instructions, and create one task per assignee when work is given to several people. Return at most 50 tasks; merge closely related steps if needed. Do not invent work.",
       user: `Current time in Asia/Kolkata: ${now.toLocaleString("en-IN", { timeZone: "Asia/Kolkata", dateStyle: "full", timeStyle: "long" })}\n\nEmployee directory:\n${directory}\n\nSource:\n${rawContent}`,
       temperature: 0,
-      maxTokens: 2400
+      maxTokens,
+      json: true
     });
-    const extracted = parseDispatcherJson(generated.text);
+    let generated = await extract(8_000);
+    let extracted;
+    try { extracted = parseDispatcherJson(generated.text); }
+    catch (error) {
+      if (!(error instanceof AppError) || error.code !== "AI_INVALID_RESPONSE") throw error;
+      generated = await extract(generated.truncated ? 16_000 : 8_000);
+      try { extracted = parseDispatcherJson(generated.text); }
+      catch (retryError) {
+        if (generated.truncated) throw new AppError("This document has more work than AI can extract at once. Split it into smaller sections and retry.", 422, "TASK_SOURCE_TOO_LARGE");
+        throw retryError;
+      }
+    }
     taskImport.provider = generated.provider; taskImport.aiModel = generated.model;
     const records = [];
     for (const item of extracted) {
