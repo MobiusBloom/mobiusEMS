@@ -82,12 +82,14 @@ Configure the Cloudinary variables to enable external uploads. Files are stored 
 ## Production deployment on Hostinger
 
 1. Create a separate Hostinger Node.js Web App and map `ems.mobiusbloom.com` to it. Do not place this project in Laravel's `public_html`.
-2. Select Node.js 20 or newer. Install build dependencies with `npm ci --include=dev` and build with `npm run build`. CSS tooling is required during the build, even when the hosting environment sets `NODE_ENV=production`.
-3. Set the start command to `npm start`.
+2. Select Node.js 22. Install dependencies from the repository root and build with `npm run build`. The committed `.npmrc` includes build dependencies during Hostinger's automatic `npm install`, even with `NODE_ENV=production`; Tailwind, PostCSS and Autoprefixer must be available to compile CSS. For manual installs, use `npm ci --include=dev`.
+3. Set the start command to `npm start`, or choose `index.js` as the entry file for the Other application type. The existing root entry file starts the compiled server.
 4. Add all production environment values in Hostinger. Use `NODE_ENV=production`, `CLIENT_URL=https://ems.mobiusbloom.com`, and `COOKIE_DOMAIN=ems.mobiusbloom.com`.
 5. Point the subdomain DNS record using the value Hostinger supplies and enable HTTPS.
 
 Express serves `client/dist`, retains `/api/v1/*` for REST endpoints, and applies SPA fallback for client routes.
+
+For a production-only dependency audit, use `npm audit --omit=dev --include=prod`. The explicit include overrides the build installation default in `.npmrc`. If preparing a separate runtime-only installation after building, likewise use `npm prune --omit=dev --include=prod`.
 
 ### AI provider configuration
 
