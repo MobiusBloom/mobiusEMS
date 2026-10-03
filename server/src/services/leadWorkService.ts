@@ -9,6 +9,7 @@ import { LeadImportBatch } from "../models/LeadImportBatch.js";
 import { LeadWorkItem, type LeadWorkStatus } from "../models/LeadWorkItem.js";
 import { LeadWorkActivity } from "../models/LeadWorkActivity.js";
 import { AppError } from "../utils/AppError.js";
+import { leadAttributionForUser } from "./leadAttributionService.js";
 import { createTask } from "./workService.js";
 import { getViewerHierarchyScope, assertEmployeeInScope } from "./hierarchyService.js";
 import { writeAudit } from "./auditService.js";
@@ -40,7 +41,8 @@ export const commitLeadImport = async (input:CommitInput, actor:Actor) => {
   const get=(r:typeof usable[number],field:string)=>clean(Object.entries(input.mapping).find(([,v])=>v===field)?.[0] ? r.values[Object.entries(input.mapping).find(([,v])=>v===field)![0]] : "");
   const invalid=usable.filter((r)=>!get(r,"name")&&!get(r,"phone")&&!get(r,"email")); if(invalid.length) throw new AppError(`${invalid.length} rows have no lead name, phone, or email`,422,"INVALID_LEAD_ROWS");
   const task=await createTask({...input.task},actor.id); let duplicates=0; const items=[];
-  for(const row of usable){ const phone=get(row,"phone"),email=normalizeEmail(get(row,"email")),fullName=[get(row,"firstName"),get(row,"lastName")].filter(Boolean).join(" ").trim()||get(row,"name"); const or:any[]=[]; if(phone) or.push({phone}); if(email) or.push({email}); let lead=or.length?await SalesLead.findOne({$or:or}):null; if(lead) duplicates++; else lead=await SalesLead.create({name:fullName||get(row,"companyName")||phone||email,phone,email:email||undefined,companyName:get(row,"companyName")||undefined,notes:get(row,"notes")||undefined,market:get(row,"market")||undefined,source:get(row,"source")||undefined,estimatedValue:Number(get(row,"estimatedValue"))||0,ownerEmployee:assignee._id,status:"NEW"}); items.push({task:task._id,lead:lead._id,assignedEmployee:assignee._id,sourceRow:row.rowNumber,originalData:row.values}); }
+  const attribution = await leadAttributionForUser(actor.id);
+  for(const row of usable){ const phone=get(row,"phone"),email=normalizeEmail(get(row,"email")),fullName=[get(row,"firstName"),get(row,"lastName")].filter(Boolean).join(" ").trim()||get(row,"name"); const or:any[]=[]; if(phone) or.push({phone}); if(email) or.push({email}); let lead=or.length?await SalesLead.findOne({$or:or}):null; if(lead) duplicates++; else lead=await SalesLead.create({...attribution,name:fullName||get(row,"companyName")||phone||email,phone,email:email||undefined,companyName:get(row,"companyName")||undefined,notes:get(row,"notes")||undefined,market:get(row,"market")||undefined,source:get(row,"source")||undefined,estimatedValue:Number(get(row,"estimatedValue"))||0,ownerEmployee:assignee._id,status:"NEW"}); items.push({task:task._id,lead:lead._id,assignedEmployee:assignee._id,sourceRow:row.rowNumber,originalData:row.values}); }
   await LeadWorkItem.insertMany(items);
   const batch=await LeadImportBatch.create({task:task._id,fileName:input.fileName,fileHash:input.fileHash,idempotencyKey:input.idempotencyKey,importedBy:actor.id,assignedEmployee:assignee._id,sheetName:input.sheetName,totalRows:input.rows.length,importedRows:items.length,rejectedRows:input.rows.length-items.length,duplicateLinks:duplicates,columns:Object.keys(input.mapping),mapping:input.mapping});
   await writeAudit({user:actor.id,action:"LEAD_LIST_IMPORTED",entityType:"Task",entityId:task.id,newValue:{rows:items.length,duplicates,fileName:input.fileName}});

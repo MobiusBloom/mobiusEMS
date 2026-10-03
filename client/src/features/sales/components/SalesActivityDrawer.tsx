@@ -1,3 +1,4 @@
+import { LeadOrigin } from "./LeadOrigin";
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
@@ -150,10 +151,12 @@ export const SalesActivityDrawer = ({
             </p>
           </div>
           <div>
-            <span className="text-slate-400">Owner</span>
+            {path === "leads" && <div className="mb-3"><span className="text-slate-400">Lead brought by</span><p className="font-semibold text-slate-900"><LeadOrigin record={record}/></p></div>}
+            <span className="text-slate-400">{path === "leads" ? "Sales employee" : "Owner"}</span>
             <p className="font-semibold text-slate-900 flex items-center gap-1">
               <User size={12} className="text-slate-400" />
               {ownerName || "Unassigned"}
+              {typeof record.ownerEmployee === "object" && record.ownerEmployee?.employeeId && <span className="text-xs font-normal text-slate-500">({record.ownerEmployee.employeeId})</span>}
             </p>
           </div>
           <div>

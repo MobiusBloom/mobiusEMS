@@ -13,6 +13,7 @@ import { SalesTerritory } from "../models/SalesTerritory.js";
 import { SalesActivity } from "../models/SalesActivity.js";
 import { calculateTargetProgress } from "./salesMath.js";
 import { AppError } from "../utils/AppError.js";
+import { leadAttributionForUser } from "./leadAttributionService.js";
 import { writeAudit } from "./auditService.js";
 import {
   assertSalesEmployeeScope,
@@ -50,7 +51,7 @@ const targetTransitions: Record<TargetStatus, readonly TargetStatus[]> = {
 };
 
 export const salesPopulationPaths: Record<SalesEntityName, string> = {
-  leads: "ownerEmployee territory geoNode customer",
+  leads: "ownerEmployee createdByEmployee createdBy territory geoNode customer",
   customers: "ownerEmployee territory geoNode sourceLead",
   opportunities: "ownerEmployee territory geoNode lead customer",
   targets: "employee territory",
@@ -347,6 +348,7 @@ export const createSalesData = async (viewer: SessionUser, entity: SalesEntityNa
   if (scope.level === "SELF" && entity !== "channelPartners") input[employeeKey] = scope.employeeId;
   if (scope.level === "SELF" && entity === "channelPartners") input.ownerEmployee = scope.employeeId;
   if (entity === "leads") {
+    Object.assign(input, await leadAttributionForUser(viewer.id));
     input.status = "NEW";
     delete input.customer;
     delete input.firstResponseAt;
@@ -420,6 +422,8 @@ export const updateSalesData = async (viewer: SessionUser, entity: SalesEntityNa
     if (!isIdempotentStatusRetry) throw new AppError("Closed opportunities cannot be edited", 409, "OPPORTUNITY_CLOSED");
   }
   if (entity === "leads") {
+    delete input.createdBy;
+    delete input.createdByEmployee;
     delete input.customer;
     delete input.convertedAt;
     delete input.firstResponseAt;

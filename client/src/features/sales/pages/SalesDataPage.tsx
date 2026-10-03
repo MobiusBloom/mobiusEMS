@@ -1,5 +1,5 @@
 import countryMaster from "world-countries";
-import { useEffect, useState, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { PermissionName } from "@mobius-ems/shared";
 import { Database, Plus, Kanban, LayoutList } from "lucide-react";
@@ -10,6 +10,7 @@ import { useAuth } from "@/features/auth/AuthProvider";
 import { salesApi, type SalesRecord } from "../salesApi";
 import { getStatesForCountry, getStateCoordinates } from "../data/stateData";
 import { LocationPickerMap } from "../components/LocationPickerMap";
+import { LeadOrigin } from "../components/LeadOrigin";
 import { SalesKanbanBoard } from "../components/SalesKanbanBoard";
 import { SalesActivityDrawer } from "../components/SalesActivityDrawer";
 
@@ -200,9 +201,10 @@ const columnsFor = (path: SalesDataPath, onSelectRecord?: (item: SalesRecord) =>
     { label: "Status / action", render: (item) => <StatusControl item={item} path="leads" nextStatuses={leadTransitions[(item.status ?? "NEW") as LeadStatus] ?? []} reasonRequired/> },
     { label: "Customer", render: (item) => item.customer ? labelOf(item.customer) : "—" },
     { label: "Contact", render: (item) => <div><p>{item.phone ?? "—"}</p>{item.email && <p className="mt-1 text-xs text-slate-400">{item.email}</p>}</div> },
+    { label: "Lead brought by", render: (item) => <LeadOrigin record={item}/> },
     { label: "Source", render: (item) => item.source ?? "—" },
     { label: "Country / market", render: (item) => item.market ?? "—" },
-    { label: "Owner", render: (item) => labelOf(item.ownerEmployee) },
+    { label: "Sales employee", render: (item) => <div><p>{labelOf(item.ownerEmployee)}</p>{typeof item.ownerEmployee === "object" && item.ownerEmployee?.employeeId && <p className="mt-1 text-xs text-slate-400">{item.ownerEmployee.employeeId}</p>}</div> },
     { label: "Territory", render: (item) => labelOf(item.territory) },
     { label: "Estimated value", align: "right", render: (item) => money(item.currency, item.estimatedValue) },
   ];
@@ -316,6 +318,7 @@ export const SalesDataPage = ({ path, title }: { path: SalesDataPath; title: str
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
   const [notice, setNotice] = useState("");
+  const [leadEmployeeFilter, setLeadEmployeeFilter] = useState("");
   const [form, setForm] = useState(initialForm);
   const [viewMode, setViewMode] = useState<"table" | "kanban">("table");
   const [selectedRecordForDrawer, setSelectedRecordForDrawer] = useState<SalesRecord | null>(null);
@@ -330,13 +333,8 @@ export const SalesDataPage = ({ path, title }: { path: SalesDataPath; title: str
   const partners = useQuery({ queryKey: ["sales", "channel-partners", "form"], queryFn: () => salesApi.records("channel-partners"), enabled: open && path === "revenue" });
   const columns = columnsFor(path, (record) => setSelectedRecordForDrawer(record));
 
-  useEffect(() => {
-    if (!open) return;
-    setForm((current) => ({
-      ...current,
-      employee: current.employee || employees.data?.items[0]?._id || "",
-    }));
-  }, [employees.data, open]);
+  const leadOwners = [...new Map((query.data?.items ?? []).filter((item) => idOf(item.ownerEmployee)).map((item) => [idOf(item.ownerEmployee), item.ownerEmployee])).entries()].sort((a, b) => labelOf(a[1]).localeCompare(labelOf(b[1])));
+  const visibleItems = (query.data?.items ?? []).filter((item) => path !== "leads" || !leadEmployeeFilter || idOf(item.ownerEmployee) === leadEmployeeFilter);
 
   const moveMutation = useMutation({
     mutationFn: ({ id, target }: { id: string; target: string }) => {
@@ -462,7 +460,7 @@ export const SalesDataPage = ({ path, title }: { path: SalesDataPath; title: str
     setOpen(true);
   };
   const addLabel = title === "Pipeline" ? "opportunity" : title.toLowerCase().replace(/s$/, "");
-  const employeeField = hasTeamScope && <label className="text-sm font-medium">{path === "targets" ? "Target employee" : "Owner employee"}<select required={path !== "channel-partners"} className="mt-2 h-11 w-full rounded-xl border bg-white px-3" value={form.employee} onChange={(event) => setForm({ ...form, employee: event.target.value })}><option value="">Select employee</option>{employees.data?.items.map((employee) => <option key={employee._id} value={employee._id}>{employee.firstName} {employee.lastName}</option>)}</select></label>;
+  const employeeField = hasTeamScope && <label className="text-sm font-medium">{path === "targets" ? "Target employee" : path === "leads" ? "Sales employee" : "Owner employee"}<select required={path !== "channel-partners"} className="mt-2 h-11 w-full rounded-xl border bg-white px-3" value={form.employee} onChange={(event) => setForm({ ...form, employee: event.target.value })}><option value="">Select employee</option>{employees.data?.items.map((employee) => <option key={employee._id} value={employee._id}>{employee.firstName} {employee.lastName} ({employee.employeeId})</option>)}</select></label>;
   const territoryField = <label className="text-sm font-medium">Territory (optional)<select required={path === "targets" && form.targetScope === "TERRITORY"} className="mt-2 h-11 w-full rounded-xl border bg-white px-3" value={form.territory} onChange={(event) => setForm({ ...form, territory: event.target.value })}><option value="">Leave unassigned</option>{territories.data?.items.map((territory) => <option key={territory._id} value={territory._id}>{territory.name}</option>)}</select><span className="mt-1 block text-xs font-normal text-slate-400">Use a territory only when your manager has defined one.</span></label>;
   const geographyField = <label className="text-sm font-medium">Geographic node<select className="mt-2 h-11 w-full rounded-xl border bg-white px-3" value={form.geoNode} onChange={(event) => setForm({ ...form, geoNode: event.target.value })}><option value="">Select country/state/district/city</option>{geographies.data?.items.map((geo) => <option key={geo._id} value={geo._id}>{`${"— ".repeat(Math.max(0, geo.depth - 1))}${geo.name} (${geo.type})`}</option>)}</select><span className="mt-1 block text-xs font-normal text-slate-400">Required for detailed map and geographic rollups.</span></label>;
 
@@ -544,6 +542,8 @@ export const SalesDataPage = ({ path, title }: { path: SalesDataPath; title: str
     <div className={`mt-5 rounded-xl border p-4 text-sm ${isHrView ? "border-blue-100 bg-blue-50 text-blue-900" : "border-emerald-100 bg-emerald-50 text-emerald-900"}`}><p className="font-medium">{isHrView ? "HR view · Read only" : hasTeamScope ? "Team workflow" : "Your sales workflow"}</p><p className="mt-1 text-xs opacity-80">{isHrView ? sectionMeta[path].hr : sectionMeta[path].next}</p></div>
     {notice && <p role="status" className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">{notice}</p>}
 
+    {path === "leads" && hasTeamScope && <div className="mt-5 flex flex-wrap items-end gap-4"><label className="text-sm font-medium">Sales employee<select className="mt-2 block h-11 rounded-xl border bg-white px-3" value={leadEmployeeFilter} onChange={(event) => setLeadEmployeeFilter(event.target.value)}><option value="">All sales employees</option>{leadOwners.map(([id, owner]) => <option key={id} value={id}>{labelOf(owner)}{typeof owner === "object" && owner?.employeeId ? ` (${owner.employeeId})` : ""}</option>)}</select></label><p role="status" className="pb-3 text-sm text-slate-500">{visibleItems.length} leads shown</p></div>}
+
     {viewMode === "kanban" && (path === "pipeline" || path === "leads") ? (
       <section className="mt-5">
         {query.isLoading ? (
@@ -553,7 +553,7 @@ export const SalesDataPage = ({ path, title }: { path: SalesDataPath; title: str
         ) : (
           <SalesKanbanBoard
             path={path}
-            items={query.data?.items ?? []}
+            items={visibleItems}
             canManage={canManage}
             onMoveStage={(id, target) => moveMutation.mutate({ id, target })}
             onSelectRecord={(rec) => setSelectedRecordForDrawer(rec)}
@@ -562,7 +562,7 @@ export const SalesDataPage = ({ path, title }: { path: SalesDataPath; title: str
       </section>
     ) : (
       <section className="mt-5 overflow-hidden rounded-2xl border bg-white shadow-soft">
-        {query.isLoading ? <div className="p-5"><Skeleton className="h-64"/></div> : query.isError ? <p className="p-5 text-sm text-red-700">{query.error.message}</p> : !query.data?.items.length ? <div className="grid min-h-64 place-items-center p-6 text-center"><div><Database className="mx-auto text-slate-300"/><p className="mt-3 font-medium">Nothing here yet</p><p className="mt-1 text-sm text-slate-400">{sectionMeta[path].empty}</p>{canManage && <Button className="mt-4" variant="secondary" onClick={openCreate}><Plus size={15}/> Add first {addLabel}</Button>}</div></div> : <div className="overflow-x-auto"><table className="min-w-full text-left text-sm"><thead className="border-b bg-slate-50 text-xs uppercase tracking-wide text-slate-500"><tr>{columns.map((column) => <th key={column.label} className={`px-5 py-3 ${column.align === "right" ? "text-right" : ""}`}>{column.label}</th>)}</tr></thead><tbody className="divide-y">{query.data.items.map((item) => <tr key={item._id}>{columns.map((column) => <td key={column.label} className={`whitespace-nowrap px-5 py-4 align-top ${column.align === "right" ? "text-right font-medium" : "text-slate-600 first:font-medium first:text-ink"}`}>{column.render(item)}</td>)}</tr>)}</tbody></table></div>}
+        {query.isLoading ? <div className="p-5"><Skeleton className="h-64"/></div> : query.isError ? <p className="p-5 text-sm text-red-700">{query.error.message}</p> : !visibleItems.length ? <div className="grid min-h-64 place-items-center p-6 text-center"><div><Database className="mx-auto text-slate-300"/><p className="mt-3 font-medium">Nothing here yet</p><p className="mt-1 text-sm text-slate-400">{path === "leads" && leadEmployeeFilter ? "No leads for this sales employee." : sectionMeta[path].empty}</p>{canManage && <Button className="mt-4" variant="secondary" onClick={openCreate}><Plus size={15}/> Add first {addLabel}</Button>}</div></div> : <div className="overflow-x-auto"><table className="min-w-full text-left text-sm"><thead className="border-b bg-slate-50 text-xs uppercase tracking-wide text-slate-500"><tr>{columns.map((column) => <th key={column.label} className={`px-5 py-3 ${column.align === "right" ? "text-right" : ""}`}>{column.label}</th>)}</tr></thead><tbody className="divide-y">{visibleItems.map((item) => <tr key={item._id}>{columns.map((column) => <td key={column.label} className={`whitespace-nowrap px-5 py-4 align-top ${column.align === "right" ? "text-right font-medium" : "text-slate-600 first:font-medium first:text-ink"}`}>{column.render(item)}</td>)}</tr>)}</tbody></table></div>}
       </section>
     )}
   </div>
@@ -677,7 +677,8 @@ export const SalesDataPage = ({ path, title }: { path: SalesDataPath; title: str
       {path === "revenue" && <><label className="text-sm font-medium">Amount<Input required type="number" min="0" className="mt-2" value={form.value} onChange={(event) => setForm({ ...form, value: event.target.value })}/></label><label className="text-sm font-medium">Sales quantity<Input required type="number" min="1" step="1" className="mt-2" value={form.quantity} onChange={(event) => setForm({ ...form, quantity: event.target.value })}/></label><label className="text-sm font-medium">Transaction date<Input required type="date" max={today()} className="mt-2" value={form.date} onChange={(event) => setForm({ ...form, date: event.target.value })}/></label><label className="text-sm font-medium">Revenue source<select className="mt-2 h-11 w-full rounded-xl border bg-white px-3" value={form.source} onChange={(event) => setForm({ ...form, source: event.target.value })}>{["INVOICE", "RECEIPT", "ADJUSTMENT", "OTHER"].map((source) => <option key={source}>{source}</option>)}</select></label><label className="text-sm font-medium">Invoice/reference<Input required className="mt-2" value={form.reference} onChange={(event) => setForm({ ...form, reference: event.target.value })}/></label></>}
       {path === "channel-partners" && <label className="text-sm font-medium">Effective from<Input required type="date" className="mt-2" value={form.date} onChange={(event) => setForm({ ...form, date: event.target.value })}/></label>}
     </div>
-    {!hasTeamScope && path !== "targets" && <p className="mt-4 text-xs text-slate-400">Owner is set to your employee profile automatically. Geography and territory are optional.</p>}
+    {!hasTeamScope && path !== "targets" && <p className="mt-4 text-xs text-slate-400">Sales employee is set to your employee profile automatically. Geography and territory are optional.</p>}
+    {path === "leads" && <p className="mt-3 text-xs text-slate-500">Your account is recorded automatically as the person who brought this lead, even if it is assigned to another employee.</p>}
     {create.error && <p className="mt-4 text-sm text-red-600">{create.error.message}</p>}
     <div className="mt-6 flex justify-end gap-2"><Button type="button" variant="ghost" onClick={() => setOpen(false)}>Cancel</Button><Button disabled={create.isPending}>{create.isPending ? "Saving..." : "Save"}</Button></div>
   </form></div>}

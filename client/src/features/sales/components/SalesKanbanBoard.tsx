@@ -1,3 +1,4 @@
+import { LeadOrigin } from "./LeadOrigin";
 import { useState } from "react";
 import {
   Building2,
@@ -229,6 +230,10 @@ export const SalesKanbanBoard = ({
                           {item.market}
                         </p>
                       )}
+
+                      {path === "leads" && <p className="mt-3 text-xs text-slate-600">Sales employee: <span className="font-medium">{ownerName || "Unassigned"}</span>{typeof item.ownerEmployee === "object" && item.ownerEmployee?.employeeId && ` (${item.ownerEmployee.employeeId})`}</p>}
+
+                      {path === "leads" && <p className="mt-1 text-xs text-slate-600">Lead brought by: <LeadOrigin record={item}/></p>}
 
                       {/* Value & Probability Bar */}
                       <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center justify-between">

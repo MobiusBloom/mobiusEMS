@@ -41,7 +41,9 @@ export interface SalesRecord {
   sourceLead?: string | { _id: string; name: string };
   channelPartner?: string | { _id: string; name: string; code?: string };
   sourceOpportunity?: string | { _id: string; name: string };
-  ownerEmployee?: string | { _id: string; firstName: string; lastName: string };
+  ownerEmployee?: string | { _id: string; firstName: string; lastName: string; employeeId?: string };
+  createdByEmployee?: SalesRecord["ownerEmployee"];
+  createdBy?: string | { _id: string; name: string };
   employee?: string | { _id: string; firstName: string; lastName: string };
   territory?: string | { _id: string; name: string; code: string };
   periodType?: string;
