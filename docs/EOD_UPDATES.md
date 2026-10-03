@@ -27,3 +27,6 @@ Data uses the existing tenant-scoped model and startup registry, including a ten
 - `PATCH /api/v1/eod/:id/review`: super-admin acknowledgement and optional feedback.
 
 No new dependencies, automatic messages, or scheduled reminders are introduced.
+
+## Voice entry
+Employees can select an EOD text section and dictate in English, Hindi, or another listed language. This uses the browser SpeechRecognition/webkitSpeechRecognition API already used by the voice task assistant fallback, without calling Whisper. Speech appends to the chosen field; review and edit before submitting. Requires a supported browser, microphone permission, and browser speech service availability. Switching sections stops recording; typed entry remains available.

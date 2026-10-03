@@ -5,6 +5,7 @@ import { api } from "@/api/client";
 import { useAuth } from "@/features/auth/AuthProvider";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
+import { VoiceDictation } from "@/components/VoiceDictation";
 
 type Health = "ON_TRACK" | "AT_RISK" | "BLOCKED";
 type Update = { _id: string; employee: string; date: string; accomplishments: string; inProgress: string; nextPlan: string; blockers: string; health: Health; status: "DRAFT" | "SUBMITTED"; submittedAt?: string; acknowledgedAt?: string; managerComment?: string };
@@ -24,10 +25,13 @@ function EmployeeEditor({ date, update }: { date: string; update?: Update }) {
   const client = useQueryClient();
   const [draft, setDraft] = useState({ accomplishments: update?.accomplishments ?? "", inProgress: update?.inProgress ?? "", nextPlan: update?.nextPlan ?? "", blockers: update?.blockers ?? "", health: update?.health ?? "ON_TRACK" as Health });
   const [saved, setSaved] = useState("");
+  const [voiceField, setVoiceField] = useState<typeof fields[number][0]>("accomplishments");
   const save = useMutation({ mutationFn: (status: Update["status"]) => api.put("/api/v1/eod", { ...draft, date, status }), onSuccess: async (_, status) => { setSaved(status === "DRAFT" ? "Draft saved. Only you can see it." : "EOD submitted. Your super admin can now review it."); await client.invalidateQueries({ queryKey: ["eod"] }); } });
   return <section className={panel}>
     <div className="mb-6 flex flex-wrap items-center justify-between gap-3"><h2 className="text-lg font-semibold">Your daily update</h2><span className="rounded-full bg-brand-50 px-3 py-1 text-sm text-brand-700">{update?.status === "SUBMITTED" ? "Submitted" : update ? "Draft" : "Not started"}</span></div>
     <form onSubmit={event => { event.preventDefault(); save.mutate("SUBMITTED"); }} className="space-y-5">
+      <label className="block text-sm font-semibold">Section to update by voice<select className="mt-2 block h-11 w-full rounded-xl border bg-white px-3" value={voiceField} onChange={event => setVoiceField(event.target.value as typeof voiceField)}>{fields.map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></label>
+      <VoiceDictation key={voiceField} disabled={save.isPending} onTranscript={text => { setSaved(""); setDraft(current => ({ ...current, [voiceField]: `${current[voiceField]}${current[voiceField] ? "\n" : ""}${text}`.slice(0, 4000) })); }}/>
       <label className="block text-sm font-semibold">How is your work going?<select className="mt-2 block min-h-11 w-full rounded-xl border bg-white p-3" value={draft.health} onChange={event => { setSaved(""); setDraft({ ...draft, health: event.target.value as Health }); }}>{Object.entries(labels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
       <div className="grid gap-5 md:grid-cols-2">{fields.map(([key, label, hint]) => <label key={key} className="block text-sm font-semibold">{label}<span className="mt-1 block text-sm font-normal text-slate-500">{hint}</span><textarea className="mt-2 block w-full rounded-xl border p-3 font-normal" rows={5} maxLength={4000} required={key === "nextPlan" || (key === "blockers" && draft.health !== "ON_TRACK")} value={draft[key]} onChange={event => { setSaved(""); setDraft({ ...draft, [key]: event.target.value }); }}/></label>)}</div>
       <p className="text-sm text-slate-500">Keep it brief. Describe completed work or work in progress, and your next priorities. Raise urgent blockers directly with your manager.</p>
