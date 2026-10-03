@@ -19,15 +19,23 @@ export const seedTenantRoles = async (): Promise<void> => {
   for (const name of ROLES) {
     const existing = await Role.findOne({ name });
     if (!existing) {
-      await Role.create({ name, description: name.replaceAll("_", " "), permissions: [...ROLE_PERMISSIONS[name]], isSystem: true });
+      await Role.create({ name, description: name.replaceAll("_", " "), permissions: [...ROLE_PERMISSIONS[name]], isSystem: true, eodPermissionsInitialized: true });
       continue;
     }
     existing.description = name.replaceAll("_", " ");
     existing.isSystem = true;
     if (name === "SUPER_ADMIN") existing.permissions = [...PERMISSIONS];
     else if (!existing.permissions.some((permission) => SECTION_PERMISSIONS.includes(permission as never))) {
-      const defaultSections = ROLE_PERMISSIONS[name].filter((permission) => SECTION_PERMISSIONS.includes(permission as never));
+      const defaultSections = ROLE_PERMISSIONS[name].filter((permission) => SECTION_PERMISSIONS.includes(permission as never) && permission !== "section.eod");
       existing.permissions = [...new Set([...existing.permissions, ...defaultSections])];
+    }
+    // Roll out EOD once to legacy built-in roles; preserve configured EOD access.
+    if (!existing.eodPermissionsInitialized) {
+      if (!existing.permissions.some((permission) => permission === "section.eod" || permission.startsWith("eod."))) {
+        const eodPermissions = ROLE_PERMISSIONS[name].filter((permission) => permission === "section.eod" || permission.startsWith("eod."));
+        existing.permissions = [...new Set([...existing.permissions, ...eodPermissions])];
+      }
+      existing.eodPermissionsInitialized = true;
     }
     await existing.save();
   }

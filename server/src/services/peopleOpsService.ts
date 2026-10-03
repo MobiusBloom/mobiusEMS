@@ -213,7 +213,7 @@ export const reviewLeave = async (id: string, input: { status: "APPROVED" | "REJ
 export const listRecognition = async (viewer: { id: string; role: string }) => Recognition.find({ employee: { $in: await scopedEmployees(viewer) } }).populate("employee", "firstName lastName employeeId").populate("awardedBy", "name").sort({ awardedAt: -1 }).lean();
 export const awardRecognition = async (input: { employee: string; badge: RecognitionDocument["badge"]; explanation: string; evidence: string[] }, actor: string) => { const employee = await Employee.findById(input.employee); if (!employee) throw new AppError("Employee not found", 404); const item = await Recognition.create({ ...input, awardedBy: actor, awardedAt: new Date() }); await notify({ recipient: employee.user.toString(), type: "RECOGNITION_AWARDED", title: `Recognition: ${input.badge.replaceAll("_", " ")}`, body: input.explanation, entityType: "Recognition", entityId: item.id }); await writeAudit({ user: actor, action: "RECOGNITION_AWARDED", entityType: "Recognition", entityId: item.id, newValue: input }); return item; };
 export const listRoles = async () => Role.find().sort("name").lean();
-export const updateRolePermissions = async (id: string, permissions: string[], actor: string) => { const role = await Role.findById(id); if (!role) throw new AppError("Role not found", 404); if (role.name === "SUPER_ADMIN") throw new AppError("Super Admin always has full access", 422, "SUPER_ADMIN_ACCESS_LOCKED"); const oldValue = role.permissions; role.permissions = permissions as typeof role.permissions; await role.save(); await writeAudit({ user: actor, action: "ROLE_PERMISSIONS_CHANGED", entityType: "Role", entityId: role.id, oldValue, newValue: permissions }); return role; };
+export const updateRolePermissions = async (id: string, permissions: string[], actor: string) => { const role = await Role.findById(id); if (!role) throw new AppError("Role not found", 404); if (role.name === "SUPER_ADMIN") throw new AppError("Super Admin always has full access", 422, "SUPER_ADMIN_ACCESS_LOCKED"); const oldValue = role.permissions; role.permissions = permissions as typeof role.permissions; role.eodPermissionsInitialized = true; await role.save(); await writeAudit({ user: actor, action: "ROLE_PERMISSIONS_CHANGED", entityType: "Role", entityId: role.id, oldValue, newValue: permissions }); return role; };
 export const updateRoleSectionAccess = async (id: string, sections: SectionPermissionName[], actor: string) => {
   const role = await Role.findById(id);
   if (!role) throw new AppError("Role not found", 404);
@@ -221,6 +221,7 @@ export const updateRoleSectionAccess = async (id: string, sections: SectionPermi
   const oldValue = role.permissions.filter((permission) => SECTION_PERMISSIONS.includes(permission as SectionPermissionName));
   const operationalPermissions = role.permissions.filter((permission) => !SECTION_PERMISSIONS.includes(permission as SectionPermissionName));
   role.permissions = [...operationalPermissions, ...sections] as PermissionName[];
+  role.eodPermissionsInitialized = true;
   await role.save();
   await writeAudit({ user: actor, action: "ROLE_SECTION_ACCESS_CHANGED", entityType: "Role", entityId: role.id, oldValue, newValue: sections });
   return role;

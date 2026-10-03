@@ -40,7 +40,7 @@ const coreGroups: { label: string; items: NavItem[] }[] = [
     items: [
       { label: "Dashboard", icon: CircleGauge, path: "/", section: "section.dashboard" },
       { label: "My profile", icon: UserRound, path: "/me", section: "section.profile" },
-      { label: "Daily work intelligence", icon: FileText, path: "/eod", section: "section.eod" },
+      { label: "EOD / Daily report", icon: FileText, path: "/eod", section: "section.eod" },
       { label: "AI Workspace", icon: Bot, path: "/ai-workspace", section: "section.ai_workspace", requiredFeature: "aiEnabled" },
     ],
   },

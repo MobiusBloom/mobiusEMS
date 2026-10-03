@@ -8,7 +8,7 @@ The upgrade extends those components. EodTemplate uses tenantModel and the exist
 
 ## Employee flow
 
-Open Workspace > Daily work intelligence (`/eod`) and choose My daily report. Employee ID, name, designation, department, team and reporting manager come from the authenticated employee profile. Report dates use Asia/Kolkata (IST); past dates are supported, future/invalid dates rejected.
+Open Workspace > EOD / Daily report (`/eod`) and choose My daily report. Employee ID, name, designation, department, team and reporting manager come from the authenticated employee profile. Report dates use Asia/Kolkata (IST); past dates are supported, future/invalid dates rejected.
 
 The work snapshot includes assigned tasks, completion events, ongoing/blocked/review/reopened/overdue tasks, delivery quality, hours variance and non-personal Daily Todos. Task cards include project, deadline, completion note, safe HTTP(S) evidence links, quality and blocker context. Personal todos never enter a report.
 
@@ -45,7 +45,9 @@ Supported keys: section.eod; eod.submit; eod.view.self/team/department/all; eod.
 
 Team scope reuses the reporting hierarchy, including recursive reports, existing team-lead behavior, and teams explicitly led by the viewer. Department scope includes the viewer's department and departments they head. Broad access requires the corresponding all permission, including for HR. Missing profiles fail closed unless explicit organization scope is granted. Managers never see others' drafts through list/detail/analytics endpoints. The employee's /me endpoint remains the private editing path.
 
-Shared defaults apply to newly created roles. Existing persisted roles are not silently broadened. Use the admin permission UI or the explicit idempotent rollout below. The script only adds role-appropriate EOD grants to system roles, preserves other grants, and does not touch reports or create database tables.
+Startup rolls out the EOD defaults once to existing built-in roles that have no EOD permissions. `eodPermissionsInitialized` records completion so later restarts do not restore revoked EOD access. Already configured EOD permissions, unrelated grants and custom roles are preserved; applicants receive no EOD grants. Admin permission/section edits also mark initialization complete, preserving deliberate restrictions. New built-in roles start initialized with their default permissions. Deploy/restart the server, then reload the employee session to show the sidebar link.
+
+For an explicit override, use the admin permission UI or the idempotent rollout below. The script only adds role-appropriate EOD grants to system roles, preserves other grants, and does not touch reports or create database tables.
 
 From the server directory, against an already-deployed schema:
 
@@ -55,7 +57,7 @@ npx tsx src/jobs/grantEodPermissions.ts --tenant=<tenant-object-id>
 npx tsx src/jobs/grantEodPermissions.ts --tenant=<tenant-object-id> --apply --actor=<admin-user-object-id>
 ```
 
-Repeat separately for each tenant. No rollout/backfill script has been executed as part of this implementation.
+Repeat separately for each tenant when using the explicit script. Startup covers all tenants through the existing role seeding flow.
 
 ## Templates and department adapters
 
@@ -115,7 +117,7 @@ No automatic reminders/messages, simplistic productivity score, or AI-generated 
 
 ## Validation
 
-EOD tests cover ownership, draft privacy, submitted-to-draft rejection, legacy reading, snapshot preservation, task links, review access/stale submissions, RBAC scopes, hierarchy/department resolution, templates/field types, source summaries, IST dates, tenant rejection, range filters, blocker analytics and neutral commitments. Run npm test, npm run typecheck and npm run build. Repository-wide lint currently has unrelated existing errors; changed EOD files are linted separately.
+EOD tests cover ownership, draft privacy, submitted-to-draft rejection, legacy reading, snapshot preservation, task links, review access/stale submissions, RBAC scopes, hierarchy/department resolution, templates/field types, source summaries, IST dates, tenant rejection, range filters, blocker analytics, neutral commitments and one-time role rollout/revocation preservation. Run npm test, npm run typecheck, npm run lint and npm run build.
 
 
 ## Sales reference form and IT intelligence

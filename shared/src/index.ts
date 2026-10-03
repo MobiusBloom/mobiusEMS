@@ -15,7 +15,7 @@ export const SECTION_ACCESS = [
   { key: "section.skills", label: "Skills", group: "Capability" },
   { key: "section.assessments", label: "Assessments", group: "Capability" },
   { key: "section.work", label: "Tasks & projects", group: "Work" },
-  { key: "section.eod", label: "Daily work intelligence", group: "Work" },
+  { key: "section.eod", label: "EOD / Daily report", group: "Work" },
   { key: "section.task_tracker", label: "Task tracker", group: "Work" },
   { key: "section.performance", label: "Goals & performance", group: "Performance" },
   { key: "section.contribution", label: "Contribution", group: "Performance" },
