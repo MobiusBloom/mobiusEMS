@@ -12,7 +12,7 @@ import { AppError } from "../utils/AppError.js";
 import { writeAudit } from "../services/auditService.js";
 import { eodListSchema, eodReviewSchema, eodSaveSchema, eodAnalyticsSchema, eodAnalyticsQuery, eodDetailSchema, eodTemplateCreateSchema, eodTemplateUpdateSchema } from "../validators/eodValidators.js";
 import { resolveEodScope } from "../services/eodScopeService.js";
-import { asDto, resolveEodTemplate, validateEodResponses } from "../services/eodTemplateService.js";
+import { asDto, resolveEodTemplate, refreshBuiltinDraftTemplate, validateEodResponses } from "../services/eodTemplateService.js";
 import { ownEodSummary } from "../services/eodWorkService.js";
 import { employeeContextQuery, getEodAnalytics } from "../services/eodAnalyticsService.js";
 import type { EodContext, EodTemplateDefinition } from "@mobius-ems/shared";
@@ -38,7 +38,7 @@ export const myEod = async (request: Request, response: Response): Promise<void>
   if (!employee) throw new AppError("An active employee profile is required to write EOD updates", 403);
   const date = String(request.query.date);
   const update = await EodUpdate.findOne({ employee: employee._id, date }).lean();
-  const [template, liveSummary] = await Promise.all([update?.templateSnapshot ?? resolveEodTemplate(employee), ownEodSummary(employee, date)]);
+  const [template, liveSummary] = await Promise.all([update?.templateSnapshot ? refreshBuiltinDraftTemplate(employee, update.templateSnapshot, update.status === "SUBMITTED") : resolveEodTemplate(employee), ownEodSummary(employee, date)]);
   response.json({ success: true, data: { employee, update, template, summary: update?.status === "SUBMITTED" && update.systemSummary ? update.systemSummary : liveSummary, liveSummary } });
 };
 export const saveEod = async (request: Request, response: Response): Promise<void> => {
@@ -48,7 +48,7 @@ export const saveEod = async (request: Request, response: Response): Promise<voi
   const existing = await EodUpdate.findOne({ employee: employee._id, date: input.date });
   if (existing?.status === "SUBMITTED" && input.status === "DRAFT") throw new AppError("A submitted EOD cannot be changed back to a draft", 409);
   const context = asDto<EodContext>((await employeeContextQuery({ _id: employee._id }))[0]);
-  const template = existing?.templateSnapshot ?? await resolveEodTemplate(context);
+  const template = existing?.templateSnapshot ? refreshBuiltinDraftTemplate(context, existing.templateSnapshot, existing.status === "SUBMITTED") : await resolveEodTemplate(context);
   validateEodResponses(template, input.responses ?? {}, input.status === "SUBMITTED");
   const taskIds = (input.priorities ?? []).map((p: { task?: string }) => p.task).filter(Boolean);
   if (taskIds.length) {

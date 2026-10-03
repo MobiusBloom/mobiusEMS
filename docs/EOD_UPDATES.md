@@ -61,7 +61,7 @@ Repeat separately for each tenant when using the explicit script. Startup covers
 
 ## Templates and department adapters
 
-A tenant template stores department, optional designation, active/default flags, monotonically increasing version, adapter, sections, and creator/updater. Resolution prefers department+designation, then department, then organization default, then the built-in department fallback. Within specificity, default templates take precedence, then newest version, then stable ID. Submitted reports keep a full template snapshot so later template edits/deactivation do not alter old fields. Drafts use their saved template until submitted. The template manager supports creation, editing, activation/deactivation, sections and fields.
+A tenant template stores department, optional designation, active/default flags, monotonically increasing version, adapter, sections, and creator/updater. Resolution prefers department+designation, then department, then organization default, then the built-in department fallback. Within specificity, default templates take precedence, then newest version, then stable ID. Submitted reports keep a full template snapshot so later template edits/deactivation do not alter old fields. Drafts keep saved custom templates. Only the original built-in single-section draft forms are refreshed to the department form on read/save, preserving all previous manual fields. Submitted reports keep their frozen template. No database migration runs. The template manager supports creation, editing, activation/deactivation, sections and fields.
 
 Field types: TEXT, TEXTAREA, NUMBER, CURRENCY, DATE, SELECT, MULTI_SELECT, CHECKBOX, RATING (1-5). Configuration is limited to 10 sections, 20 fields per section and 100 uniquely named fields. Manual response types/options/dates are checked against the resolved template. System fields are read-only and cannot be supplied in responses. Templates cannot contain executable queries or arbitrary data sources.
 
@@ -129,3 +129,10 @@ Follow-ups support up to twelve rows (maximum 4,000 serialized characters), stor
 IT / Engineering reports show an intelligence panel built from the displayed task snapshot: delivered work, development, review queue, blockers, overdue tasks, and rework. New Engineering fallback templates also capture release / PR / ticket evidence and testing notes. Existing submitted reports retain their frozen template and responses; saved tenant templates continue to take precedence. No template or production database migration runs automatically.
 
 To upgrade a saved Sales tenant template, select it in Templates, choose **Use Sales reference**, keep the intended department/designation scope, then save the new version. This updates future reports; existing report snapshots remain unchanged.
+
+
+## Reference-style department forms
+
+Employee EOD uses the supplied Sales HTML visual pattern: navy navigation, blue actions, compact white inputs, paired pastel section cards, follow-ups, blockers, tomorrow priorities and daily summary. Sales retains the reference fields and editable follow-up table. Other adapters use distinct structured sections for IT/Engineering, AI/ML, HR, Marketing, Operations, Finance, Administration, Customer Support and Design; unrecognized departments get a named general form. The employee department (or Sales capability) selects the fallback; saved department/designation templates still take precedence. The template manager offers each built-in form as a preset.
+
+System task totals stay read-only. Department activity without a system source is entered manually and kept separate from the task evidence. Voice, linked priorities, historical summaries and manager review remain available. Context-based suggestions flag missing follow-up actions and recorded task risks; they do not call an external AI provider or produce a productivity score.

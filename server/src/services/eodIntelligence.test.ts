@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { Types } from "mongoose";
-import { ROLE_PERMISSIONS, type EodContext, type EodResponseValue, type EodTemplateDefinition, type SessionUser } from "@mobius-ems/shared";
-import { defaultEodTemplate, selectEodTemplate, validateEodResponses } from "./eodTemplateService.js";
+import { ROLE_PERMISSIONS, EOD_ADAPTERS, type EodContext, type EodResponseValue, type EodTemplateDefinition, type SessionUser } from "@mobius-ems/shared";
+import { defaultEodTemplate, selectEodTemplate, validateEodResponses, refreshBuiltinDraftTemplate } from "./eodTemplateService.js";
 import { commitmentStates, completedTaskIds, executionMetrics, istBounds, salesWorkSummary, type WorkTask } from "./eodWorkService.js";
 import { blockerAnalytics, employeeContextQuery, getEodAnalytics } from "./eodAnalyticsService.js";
 import { resolveEodScope, eodScopeLevel } from "./eodScopeService.js";
@@ -22,6 +22,7 @@ import { SalesActivity } from "../models/SalesActivity.js";
 import { SalesTarget } from "../models/SalesTarget.js";
 import { LeadWorkActivity } from "../models/LeadWorkActivity.js";
 import { LeadWorkItem } from "../models/LeadWorkItem.js";
+import { eodTemplateInput } from "../validators/eodValidators.js";
 import { runWithTenant } from "../tenancy/tenantContext.js";
 const chain = (value: unknown, ids: unknown[] = []) => { const q = { select: () => q, populate: () => q, sort: () => q, lean: async () => value, distinct: async () => ids, then: (resolve: (v: unknown) => unknown) => Promise.resolve(resolve(value)) }; return q; };
 const employee: EodContext = { _id: "employee-a", employeeId: "A", firstName: "Alex", lastName: "A", department: { _id: "dept-a", name: "Engineering" }, designation: { _id: "des-a", name: "Developer" }, dateOfJoining: "2025-01-01T00:00:00Z" };
@@ -34,11 +35,36 @@ test("template resolution prefers designation then department then organization 
   assert.equal(selectEodTemplate([common, department, { ...designation, isActive: false }], employee).name, "Department");
   assert.equal(selectEodTemplate([common, { ...department, department: "other" }], employee).name, "Default");
 });
-test("department adapters provide structured context without mandatory experiment metrics", () => {
-  for (const [name, adapter] of [["Engineering", "ENGINEERING"], ["AI/ML", "AI_ML"], ["HR", "HR"], ["Marketing", "MARKETING"]] as const) {
-    const template = defaultEodTemplate({ ...employee, department: { _id: "dept", name } }); assert.equal(template.adapter, adapter); validateEodResponses(template, {}, true);
+test("every supported department resolves a distinct form with a valid saved-template schema", () => {
+  const cases = [["Information Technology", "ENGINEERING"], ["AI/ML", "AI_ML"], ["Human Resources", "HR"], ["Marketing", "MARKETING"], ["Sales", "SALES"], ["Operations", "OPERATIONS"], ["Finance & Accounts", "FINANCE"], ["Administration", "ADMINISTRATION"], ["Customer Support", "SUPPORT"], ["UI UX Design", "DESIGN"], ["Other", "GENERAL"]] as const;
+  const fieldSets = new Set<string>();
+  for (const [name, adapter] of cases) {
+    const template = defaultEodTemplate({ ...employee, department: { _id: "dept", name } });
+    assert.equal(template.adapter, adapter);
+    assert.ok(template.sections.length >= 3);
+    assert.ok(eodTemplateInput.safeParse(template).success);
+    validateEodResponses(template, {}, true);
+    fieldSets.add(template.sections.flatMap(s => s.fields).map(f => f.key).join(","));
   }
+  assert.equal(fieldSets.size, EOD_ADAPTERS.length);
   assert.equal(defaultEodTemplate({ ...employee, department: { _id: "sales", name: "Growth", capabilities: ["SALES_MODULE"] } }).adapter, "SALES");
+});
+test("built-in draft refresh retains every old response field and never changes custom or submitted schemas", () => {
+  const fields = ["technicalSummary", "deliveryEvidence", "validationNotes", "implementationDecision", "technicalLearning", "dependency"].map(key => ({ key, label: key, type: "TEXTAREA" as const }));
+  const old: EodTemplateDefinition = { name: "Engineering daily report", version: 2, adapter: "ENGINEERING", sections: [{ key: "department", title: "Technical delivery context", fields }] };
+  const refreshed = refreshBuiltinDraftTemplate(employee, old, false);
+  assert.equal(refreshed.version, 3);
+  for (const field of fields) assert.ok(refreshed.sections.some(s => s.fields.some(f => f.key === field.key && f.type === field.type)));
+  validateEodResponses(refreshed, { technicalSummary: "Saved text", dependency: "Saved support request" }, false);
+  assert.equal(refreshBuiltinDraftTemplate(employee, old, true), old);
+  const custom = { ...old, _id: "custom-template" };
+  assert.equal(refreshBuiltinDraftTemplate(employee, custom, false), custom);
+  const otherDepartment = { ...employee, department: { _id: "hr", name: "HR" } };
+  assert.equal(refreshBuiltinDraftTemplate(otherDepartment, old, false), old);
+  const general: EodTemplateDefinition = { ...old, adapter: "GENERAL", version: 1, sections: [{ key: "department", title: "Department update", fields: [{ key: "departmentContext", label: "Important department context", type: "TEXTAREA" }] }] };
+  const upgraded = refreshBuiltinDraftTemplate(employee, general, false);
+  assert.equal(upgraded.adapter, "ENGINEERING");
+  validateEodResponses(upgraded, { departmentContext: "Earlier draft text", technicalSummary: "New context" }, false);
 });
 test("template responses enforce types, requirements, options, dates and immutable system metrics", () => {
   const template: EodTemplateDefinition = { name: "Test", version: 1, adapter: "GENERAL", sections: [{ key: "context", title: "Context", fields: [{ key: "result", label: "Result", type: "TEXT", required: true }, { key: "count", label: "Count", type: "NUMBER" }, { key: "rating", label: "Rating", type: "RATING" }, { key: "day", label: "Day", type: "DATE" }, { key: "outcome", label: "Outcome", type: "SELECT", options: ["SUCCESS"] }, { key: "source", label: "Completed", type: "NUMBER", source: "TASKS_COMPLETED_TODAY" }] }] };

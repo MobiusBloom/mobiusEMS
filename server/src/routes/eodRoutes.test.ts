@@ -91,3 +91,18 @@ test("direct report lookup exposes another employee only when submitted", async 
   });
   await assert.rejects(detailEod(request(), response().response), /not found/);
 });
+
+test("saving an original engineering draft accepts new fields and preserves existing manual context", async context => {
+  saveSources(context);
+  const templateSnapshot = { name: "Engineering daily report", version: 2, adapter: "ENGINEERING", sections: [{ key: "department", title: "Technical delivery context", fields: ["technicalSummary", "deliveryEvidence", "validationNotes", "implementationDecision", "technicalLearning", "dependency"].map(key => ({ key, label: key, type: "TEXTAREA" })) }] };
+  const existing = { status: "DRAFT", templateSnapshot };
+  context.mock.method(EodUpdate, "findOne", () => { const q = { sort: () => q, lean: async () => null, then: (resolve: (v: unknown) => unknown) => Promise.resolve(resolve(existing)) }; return q; });
+  context.mock.method(EodUpdate, "findOneAndUpdate", async (_filter: unknown, changes: { $set: { templateSnapshot: { version: number }; responses: Record<string, unknown> } }) => {
+    assert.equal(changes.$set.templateSnapshot.version, 3);
+    assert.equal(changes.$set.responses.technicalSummary, "Earlier saved text");
+    assert.equal(changes.$set.responses.bugsFixed, 2);
+    return { id: "report-a" };
+  });
+  const req = request(); req.body.responses = { technicalSummary: "Earlier saved text", bugsFixed: 2 };
+  await saveEod(req, response().response);
+});

@@ -194,7 +194,7 @@ export const AppLayout = () => {
   const sidebar = (
     <aside
       className={cn(
-        "flex h-full max-w-[86vw] flex-col border-r bg-white transition-[width] duration-200",
+        "eod-sidebar flex h-full max-w-[86vw] flex-col border-r bg-white transition-[width] duration-200",
         collapsed ? "w-[76px]" : "w-[260px]"
       )}
     >
@@ -249,6 +249,7 @@ export const AppLayout = () => {
                       navigate(item.path);
                       setMobileOpen(false);
                     }}
+                    aria-current={active ? "page" : undefined}
                     title={item.description ? `${item.label} — ${item.description}` : item.label}
                     className={cn(
                       "flex min-h-9 w-full items-center rounded-xl px-3 py-2 text-left text-xs font-medium transition",
@@ -314,7 +315,7 @@ export const AppLayout = () => {
   );
 
   return (
-    <div className="flex min-h-screen w-full min-w-0 max-w-full overflow-x-clip">
+    <div className={cn("flex min-h-screen w-full min-w-0 max-w-full overflow-x-clip", location.pathname === "/eod" && "eod-shell")}>
       {/* Desktop sidebar — fixed */}
       <div className="fixed inset-y-0 left-0 z-40 hidden lg:block">
         {sidebar}
@@ -344,7 +345,7 @@ export const AppLayout = () => {
         )}
       >
         {/* Top header */}
-        <header className="sticky top-0 z-30 flex h-16 min-w-0 max-w-full items-center gap-2 border-b bg-[#f6f8f7]/90 px-4 backdrop-blur-xl sm:h-20 sm:gap-3 sm:px-8">
+        <header className="eod-app-header sticky top-0 z-30 flex h-16 min-w-0 max-w-full items-center gap-2 border-b bg-[#f6f8f7]/90 px-4 backdrop-blur-xl sm:h-20 sm:gap-3 sm:px-8">
           {/* Hamburger — mobile only */}
           <button
             className="grid size-10 shrink-0 place-items-center rounded-xl border bg-white lg:hidden"

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { EOD_FIELD_TYPES, EOD_DATA_SOURCES } from "@mobius-ems/shared";
+import { EOD_FIELD_TYPES, EOD_DATA_SOURCES, EOD_ADAPTERS } from "@mobius-ems/shared";
 
 export const eodToday = () => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
 export const calendarDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine(value => {
@@ -33,7 +33,7 @@ const field = z.object({ key: z.string().regex(/^[a-z][a-zA-Z0-9_]{0,63}$/).refi
   if (["SELECT", "MULTI_SELECT"].includes(value.type) && !value.options?.length) ctx.addIssue({ code: "custom", path: ["options"], message: "Select fields require options" });
   if (value.source && !["NUMBER", "CURRENCY"].includes(value.type)) ctx.addIssue({ code: "custom", path: ["source"], message: "System metrics require a numeric field" });
 });
-export const eodTemplateInput = z.object({ name: z.string().trim().min(1).max(120), department: eodId.optional(), designation: eodId.optional(), isDefault: z.boolean().default(false), isActive: z.boolean().default(true), adapter: z.enum(["GENERAL", "ENGINEERING", "SALES", "AI_ML", "HR", "MARKETING"]).default("GENERAL"), sections: z.array(z.object({ key: z.string().regex(/^[a-z][a-zA-Z0-9_]{0,63}$/), title: z.string().trim().min(1).max(120), fields: z.array(field).max(20) })).max(10) }).superRefine((value, ctx) => {
+export const eodTemplateInput = z.object({ name: z.string().trim().min(1).max(120), department: eodId.optional(), designation: eodId.optional(), isDefault: z.boolean().default(false), isActive: z.boolean().default(true), adapter: z.enum(EOD_ADAPTERS).default("GENERAL"), sections: z.array(z.object({ key: z.string().regex(/^[a-z][a-zA-Z0-9_]{0,63}$/), title: z.string().trim().min(1).max(120), fields: z.array(field).max(20) })).max(10) }).superRefine((value, ctx) => {
   const keys = value.sections.flatMap(section => section.fields.map(item => item.key));
   if (keys.length > 100 || new Set(keys).size !== keys.length || new Set(value.sections.map(s => s.key)).size !== value.sections.length) ctx.addIssue({ code: "custom", path: ["sections"], message: "Use unique section/field keys and at most 100 fields" });
   if (value.designation && !value.department) ctx.addIssue({ code: "custom", path: ["department"], message: "Designation templates require a department" });

@@ -406,3 +406,4 @@ export interface SPOFItem {
 }
 
 export * from "./salesEod.js";
+export * from "./departmentEod.js";

@@ -1,25 +1,32 @@
-import { SALES_EOD_SECTIONS, isReferenceSalesReport, SALES_FOLLOWUP_STATUSES } from "@mobius-ems/shared";
-import type { EodContext, EodField, EodResponseValue, EodTemplateDefinition } from "@mobius-ems/shared";
+import { SALES_EOD_SECTIONS, isReferenceSalesReport, SALES_FOLLOWUP_STATUSES, DEPARTMENT_EOD_SECTIONS, departmentEodAdapter } from "@mobius-ems/shared";
+import type { EodContext, EodResponseValue, EodTemplateDefinition } from "@mobius-ems/shared";
 import { EodTemplate } from "../models/EodTemplate.js";
 import { AppError } from "../utils/AppError.js";
 import { calendarDate } from "../validators/eodValidators.js";
 export const asDto = <T>(value: unknown): T => value === undefined ? value as T : JSON.parse(JSON.stringify(value)) as T;
-const manual = (key: string, label: string, type: EodField["type"] = "TEXTAREA", options?: string[]): EodField => ({ key, label, type, ...(options ? { options } : {}) });
-const definitions: Record<EodTemplateDefinition["adapter"], EodField[]> = {
-  GENERAL: [manual("departmentContext", "Important department context")],
-  ENGINEERING: [manual("technicalSummary", "Technical summary"), manual("deliveryEvidence", "Release / PR / ticket evidence"), manual("validationNotes", "Testing and verification"), manual("implementationDecision", "Important implementation decision"), manual("technicalLearning", "Technical learning"), manual("dependency", "Dependency / support needed")],
-  SALES: [manual("customerConversation", "Key customer conversation"), manual("importantFollowups", "Important follow-ups"), manual("customerObjection", "Customer objection"), manual("salesSupport", "Support required"), manual("tomorrowTarget", "Tomorrow target")],
-  AI_ML: [manual("experiment", "Experiment / research name", "TEXT"), manual("objective", "Objective"), manual("dataset", "Dataset / source", "TEXT"), manual("model", "Model / provider", "TEXT"), manual("evaluationMetric", "Evaluation metric (if relevant)", "TEXT"), manual("previousResult", "Previous result", "TEXT"), manual("currentResult", "Current result", "TEXT"), manual("observation", "Observation"), manual("outcome", "Outcome", "SELECT", ["SUCCESSFUL", "NEEDS_ITERATION", "FAILED", "RESEARCH_ONLY"]), manual("keyFinding", "Key finding"), manual("nextExperiment", "Next experiment")],
-  HR: [manual("candidatesScreened", "Candidates screened", "NUMBER"), manual("interviewsConducted", "Interviews conducted", "NUMBER"), manual("onboardingActivity", "Onboarding activity"), manual("requestsHandled", "Employee requests handled", "NUMBER"), manual("pendingHrActions", "Pending HR actions"), manual("importantHrAction", "Important HR action"), manual("pendingFollowup", "Pending follow-up")],
-  MARKETING: [manual("campaigns", "Campaigns worked on"), manual("contentCompleted", "Content completed", "NUMBER"), manual("contentPublished", "Content published", "NUMBER"), manual("enquiriesGenerated", "Leads / enquiries generated", "NUMBER"), manual("approvalsPending", "Approvals pending", "NUMBER"), manual("campaignBlockers", "Campaign blockers"), manual("keyResult", "Key result")]
-};
-// Only the fallback resolver uses names; saved tenant templates bind department IDs.
 export const defaultEodTemplate = (employee: EodContext): EodTemplateDefinition => {
-  const name = employee.department?.name.toLowerCase() ?? "";
-  const rules: Array<[EodTemplateDefinition["adapter"], RegExp]> = [["SALES", /sales|business development/], ["AI_ML", /\b(ai|ml)\b|artificial intelligence|machine learning/], ["ENGINEERING", /engineering|development|software|^it$/], ["HR", /^hr$|human resources/], ["MARKETING", /marketing/]];
-  const adapter = employee.department?.capabilities?.includes("SALES_MODULE") ? "SALES" : rules.find(([, pattern]) => pattern.test(name))?.[0] ?? "GENERAL";
-  return { name: `${employee.department?.name ?? "General"} daily report`, version: ["SALES", "ENGINEERING"].includes(adapter) ? 2 : 1, adapter, sections: adapter === "SALES" ? SALES_EOD_SECTIONS : [{ key: "department", title: adapter === "ENGINEERING" ? "Technical delivery context" : "Department update", fields: definitions[adapter] }] };
+  const adapter = departmentEodAdapter(employee);
+  return { name: `${employee.department?.name ?? "General"} daily report`, version: adapter === "SALES" ? 2 : 3, adapter, sections: DEPARTMENT_EOD_SECTIONS[adapter] };
 };
+// Refresh only the original, unsaved built-in draft schemas. Custom templates and
+// submitted history retain their fields. Existing manual responses stay editable.
+const legacyKeys: Partial<Record<EodTemplateDefinition["adapter"], string[]>> = {
+  GENERAL: ["departmentContext"],
+  ENGINEERING: ["technicalSummary", "deliveryEvidence", "validationNotes", "implementationDecision", "technicalLearning", "dependency"],
+  AI_ML: ["experiment", "objective", "dataset", "model", "evaluationMetric", "previousResult", "currentResult", "observation", "outcome", "keyFinding", "nextExperiment"],
+  HR: ["candidatesScreened", "interviewsConducted", "onboardingActivity", "requestsHandled", "pendingHrActions", "importantHrAction", "pendingFollowup"],
+  MARKETING: ["campaigns", "contentCompleted", "contentPublished", "enquiriesGenerated", "approvalsPending", "campaignBlockers", "keyResult"]
+};
+export function refreshBuiltinDraftTemplate(employee: EodContext, snapshot: EodTemplateDefinition, submitted: boolean): EodTemplateDefinition {
+  const fields = snapshot.sections.flatMap(section => section.fields);
+  const keys = legacyKeys[snapshot.adapter];
+  if (submitted || snapshot._id || snapshot.department || snapshot.designation || snapshot.version > 2 || snapshot.sections.length !== 1 || snapshot.sections[0]?.key !== "department" || !keys || keys.length !== fields.length || new Set(fields.map(field => field.key)).size !== keys.length || fields.some(field => field.source || !keys.includes(field.key))) return snapshot;
+  const replacement = defaultEodTemplate(employee);
+  if (snapshot.adapter !== "GENERAL" && replacement.adapter !== snapshot.adapter) return snapshot;
+  if (fields.some(field => replacement.sections.some(section => section.fields.some(next => next.key === field.key && next.type !== field.type)))) return snapshot;
+  const extra = fields.filter(field => !replacement.sections.some(section => section.fields.some(next => next.key === field.key)));
+  return { ...replacement, sections: [...replacement.sections, ...(extra.length ? [{ key: "previousDraft", title: "Previous Draft Context", fields: extra }] : [])] };
+}
 export const selectEodTemplate = (templates: EodTemplateDefinition[], employee: EodContext) => {
   const candidates = templates.filter(t => t.isActive !== false && ((t.department === employee.department?._id && (!t.designation || t.designation === employee.designation?._id)) || (!t.department && t.isDefault)));
   const score = (t: EodTemplateDefinition) => (t.department ? 4 : 0) + (t.designation ? 2 : 0) + (t.isDefault ? 1 : 0);

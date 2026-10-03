@@ -1,23 +1,18 @@
-import { useState, type ReactNode } from "react";
+import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { BadgeIndianRupee, ChartNoAxesCombined, Phone, ListChecks, TriangleAlert, Target, Check, UserRound, Plus, Trash2, Send, Save } from "lucide-react";
+import { Plus, Trash2, Send, Save } from "lucide-react";
 import { SALES_EOD_SECTIONS, SALES_FOLLOWUP_STATUSES, readSalesFollowups, salesNumber, type EodField, type EodResponseValue, type SalesFollowup } from "@mobius-ems/shared";
 import { api } from "@/api/client";
 import { Button } from "@/components/ui/Button";
 import { VoiceDictation } from "@/components/VoiceDictation";
 import type { MyReportData } from "./EmployeeReport";
 import { SalesSnapshot } from "./EodComponents";
-import "./departmentReports.css";
+import { ReportCard as Card, ReportBasicInformation } from "./ReportLayout";
 
 const blankRow = (): SalesFollowup => ({ name: "", status: "", nextAction: "", expectedValue: 0, expectedDate: "" });
-const icons = [BadgeIndianRupee, ChartNoAxesCombined, Phone, ListChecks, TriangleAlert, Target, Check];
-function Card({ index, title, children, action }: { index: number; title: string; children: ReactNode; action?: ReactNode }) {
-  const Icon = icons[index] ?? UserRound;
-  return <section className={`sales-card sales-color-${index}`}><div className="sales-card-heading"><span className="sales-icon"><Icon size={19} aria-hidden="true"/></span><h2>{title}</h2>{action}</div>{children}</section>;
-}
 export function SalesReport({ date, data, canSubmit }: { date: string; data: MyReportData; canSubmit: boolean }) {
   const client = useQueryClient();
-  const { employee, update, summary, template } = data;
+  const { update, summary, template } = data;
   const [values, setValues] = useState<Record<string, EodResponseValue>>(update?.responses ?? {});
   const [rows, setRows] = useState<SalesFollowup[]>(() => { const saved = readSalesFollowups(update?.responses?.importantFollowups); return saved.length ? saved : [blankRow(), blankRow(), blankRow()]; });
   const [remarks, setRemarks] = useState(update?.remarks ?? "");
@@ -42,7 +37,7 @@ export function SalesReport({ date, data, canSubmit }: { date: string; data: MyR
   const tomorrowSection = <Card index={5} title="6. Tomorrow's Plan"><div className="sales-tomorrow-targets">{SALES_EOD_SECTIONS[5].fields.slice(0, 3).map(field)}</div><div className="sales-tomorrow-plan"><div><h3 className="mb-2 text-sm font-medium">Priority Leads (Top 3)</h3><div className="sales-priorities">{SALES_EOD_SECTIONS[5].fields.slice(3, 6).map((f, i) => <div key={f.key}><span>{i + 1}.</span><input aria-label={f.label} maxLength={500} value={String(values[f.key] ?? "")} placeholder="Enter lead name" onChange={e => set(f.key, e.target.value)}/></div>)}</div></div>{field(SALES_EOD_SECTIONS[5].fields[6])}</div></Card>;
   const section = (index: number) => <Card index={index} title={SALES_EOD_SECTIONS[index].title}><div className={`sales-fields sales-fields-${index}`}>{SALES_EOD_SECTIONS[index].fields.map(field)}</div></Card>;
   return <div className="sales-report"><form onSubmit={e => { e.preventDefault(); save.mutate("SUBMITTED"); }}><fieldset disabled={!canSubmit || save.isPending}>
-    <Card index={7} title="Basic Information"><div className="sales-basic"><label className="sales-field">Employee Name *<input readOnly value={`${employee.firstName} ${employee.lastName}`}/></label><label className="sales-field">Role *<input readOnly value={update?.designationSnapshot?.name ?? employee.designation?.name ?? "Not assigned"}/></label><label className="sales-field">Date *<input type="date" readOnly value={date}/></label><label className="sales-field">Reporting Manager<input readOnly value={update?.reportingManagerSnapshot?.name ?? (employee.reportingManager ? `${employee.reportingManager.firstName} ${employee.reportingManager.lastName}` : "Not assigned")}/></label></div></Card>
+    <ReportBasicInformation date={date} data={data}/>
     <div className="sales-pair">{section(0)}{section(1)}</div>{section(2)}
     <Card index={3} title="4. Important Follow-ups" action={<Button type="button" disabled={rows.length >= 12} onClick={() => { setMessage(""); setRows([...rows, blankRow()]); }}><Plus size={16} aria-hidden="true"/>Add Row</Button>}><div className="sales-table-wrap"><table><thead><tr>{["#", "Customer / Lead Name", "Current Status", "Next Action", "Expected Value (₹)", "Expected Date", ""].map((h, i) => <th key={i} scope="col">{h}</th>)}</tr></thead><tbody>{rows.map((row, i) => <tr key={i}><td>{i + 1}</td><td><input aria-label={`Follow-up ${i + 1} customer / lead name`} maxLength={120} value={row.name} onChange={e => rowChange(i, { name: e.target.value })} placeholder="Enter name"/></td><td><select aria-label={`Follow-up ${i + 1} status`} value={row.status} onChange={e => rowChange(i, { status: e.target.value })}><option value="">Select status</option>{SALES_FOLLOWUP_STATUSES.map(s => <option key={s}>{s}</option>)}</select></td><td><input aria-label={`Follow-up ${i + 1} next action`} maxLength={200} value={row.nextAction} onChange={e => rowChange(i, { nextAction: e.target.value })} placeholder="Enter next action"/></td><td><input aria-label={`Follow-up ${i + 1} expected value`} type="number" min={0} max={1e12} step="any" value={row.expectedValue} onChange={e => rowChange(i, { expectedValue: Number(e.target.value) })}/></td><td><input aria-label={`Follow-up ${i + 1} expected date`} type="date" value={row.expectedDate} onChange={e => rowChange(i, { expectedDate: e.target.value })}/></td><td><button className="sales-remove" type="button" disabled={rows.length === 1} aria-label={`Remove follow-up ${i + 1}`} onClick={() => setRows(rows.filter((_, index) => i !== index))}><Trash2 size={16} aria-hidden="true"/></button></td></tr>)}</tbody></table></div></Card>
     <div className="sales-pair">{section(4)}{tomorrowSection}</div>

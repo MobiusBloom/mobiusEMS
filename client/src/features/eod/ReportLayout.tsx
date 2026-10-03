@@ -1,0 +1,21 @@
+import type { ReactNode } from "react";
+import { BadgeIndianRupee, ChartNoAxesCombined, Phone, ListChecks, TriangleAlert, Target, Check, UserRound, type LucideIcon } from "lucide-react";
+import type { EodField, EodResponseValue } from "@mobius-ems/shared";
+import type { MyReportData } from "./EmployeeReport";
+import "./departmentReports.css";
+
+const icons = [BadgeIndianRupee, ChartNoAxesCombined, Phone, ListChecks, TriangleAlert, Target, Check];
+export function ReportCard({ index, title, children, action, icon }: { index: number; title: string; children: ReactNode; action?: ReactNode; icon?: LucideIcon }) {
+  const Icon = icon ?? icons[index] ?? UserRound;
+  return <section className={`sales-card sales-color-${index}`}><div className="sales-card-heading"><span className="sales-icon"><Icon size={19} aria-hidden="true"/></span><h2>{title}</h2>{action}</div>{children}</section>;
+}
+export function ReportBasicInformation({ date, data }: { date: string; data: MyReportData }) {
+  const { employee, update } = data;
+  return <ReportCard index={7} title="Basic Information" action={<span className="report-status">{update?.status === "SUBMITTED" ? "Submitted" : update?.status === "DRAFT" ? "Draft" : "New report"}</span>}><div className="sales-basic"><label className="sales-field">Employee Name *<input readOnly value={`${employee.firstName} ${employee.lastName}`}/></label><label className="sales-field">Role *<input readOnly value={update?.designationSnapshot?.name ?? employee.designation?.name ?? "Not assigned"}/></label><label className="sales-field">Date *<input type="date" readOnly value={date}/></label><label className="sales-field">Reporting Manager<input readOnly value={update?.reportingManagerSnapshot?.name ?? (employee.reportingManager ? `${employee.reportingManager.firstName} ${employee.reportingManager.lastName}` : "Not assigned")}/></label></div><p className="report-context">{update?.departmentSnapshot?.name ?? employee.department?.name ?? "General"} · {employee.employeeId}{employee.team?.name ? ` · ${update?.teamSnapshot?.name ?? employee.team.name}` : ""}</p></ReportCard>;
+}
+export function ReportField({ field, value, metric, onChange }: { field: EodField; value?: EodResponseValue; metric?: number | null; onChange: (value: EodResponseValue) => void }) {
+  if (field.source) return <label className="sales-field">{field.label}<input readOnly value={metric ?? "Unavailable"}/><small>System-recorded</small></label>;
+  if (field.type === "MULTI_SELECT") return <fieldset className="sales-field"><legend>{field.label}{field.required && " *"}</legend><div className="sales-products">{field.options?.map(option => <label key={option}><input type="checkbox" checked={Array.isArray(value) && value.includes(option)} onChange={event => onChange(event.target.checked ? [...(Array.isArray(value) ? value : []), option] : (Array.isArray(value) ? value : []).filter(v => v !== option))}/>{option}</label>)}</div></fieldset>;
+  const numeric = ["NUMBER", "CURRENCY", "RATING"].includes(field.type);
+  return <label className={`sales-field ${field.type === "TEXTAREA" ? "report-long-field" : ""}`}>{field.label}{field.required && " *"}{field.type === "TEXTAREA" ? <textarea rows={3} maxLength={4000} placeholder={`Enter ${field.label.toLowerCase()}`} value={typeof value === "string" ? value : ""} onChange={event => onChange(event.target.value)}/> : field.type === "SELECT" ? <select value={typeof value === "string" ? value : ""} onChange={event => onChange(event.target.value)}><option value="">Select if relevant</option>{field.options?.map(option => <option key={option} value={option}>{option.replaceAll("_", " ")}</option>)}</select> : field.type === "CHECKBOX" ? <input type="checkbox" checked={value === true} onChange={event => onChange(event.target.checked)}/> : <input type={numeric ? "number" : field.type === "DATE" ? "date" : "text"} min={field.type === "RATING" ? 1 : undefined} max={field.type === "RATING" ? 5 : 1e12} step={field.type === "NUMBER" || field.type === "RATING" ? 1 : "any"} maxLength={4000} value={typeof value === "string" || typeof value === "number" ? value : ""} placeholder={numeric ? "0" : "Enter details"} onChange={event => onChange(numeric && event.target.value !== "" ? Number(event.target.value) : event.target.value)}/>}</label>;
+}
