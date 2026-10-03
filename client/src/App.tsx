@@ -56,6 +56,7 @@ const AttendancePage = lazyWithRetry(() => import("@/pages/AttendancePage").then
 const ContributionPage = lazyWithRetry(() => import("@/pages/ContributionPage").then((module) => ({ default: module.ContributionPage })));
 const AiWorkspacePage = lazyWithRetry(() => import("@/pages/AiWorkspacePage").then((module) => ({ default: module.AiWorkspacePage })));
 const TaskTrackerPage = lazyWithRetry(() => import("@/pages/TaskTrackerPage").then((module) => ({ default: module.TaskTrackerPage })));
+const EodPage = lazyWithRetry(() => import("@/pages/EodPage").then((module) => ({ default: module.EodPage })));
 const TenantsPage = lazyWithRetry(() => import("@/pages/TenantsPage").then((module) => ({ default: module.TenantsPage })));
 const PlatformLoginPage = lazyWithRetry(() => import("@/pages/PlatformLoginPage").then((module) => ({ default: module.PlatformLoginPage })));
 const SalesDashboardPage = lazyWithRetry(() => import("@/features/sales/pages/SalesDashboardPage").then((module) => ({ default: module.SalesDashboardPage })));
@@ -95,6 +96,7 @@ export const App = () => <Suspense fallback={<PageLoader/>}><ScrollToTop/><Route
     <Route element={<PermissionRoute permissions={["section.employees"]}/>}><Route path="employees" element={<EmployeesPage/>}/><Route path="employees/:id" element={<EmployeeProfilePage/>}/></Route>
     <Route element={<PermissionRoute permissions={["section.organization"]}/>}><Route path="organization" element={<OrganizationPage/>}/></Route>
     <Route path="hierarchy" element={<OrgHierarchyPage/>}/>
+    <Route path="eod" element={<EodPage/>}/>
     <Route element={<PermissionRoute permissions={["section.skills"]}/>}><Route path="skills" element={<SkillsPage/>}/><Route path="skills/builder" element={<SkillsPage/>}/></Route>
     <Route element={<PermissionRoute permissions={["section.assessments"]}/>}><Route path="assessments" element={<AssessmentsPage/>}/></Route>
     <Route element={<PermissionRoute permissions={["section.work"]}/>}><Route path="work" element={<WorkPage/>}/></Route>
