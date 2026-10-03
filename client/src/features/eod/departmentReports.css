@@ -1,13 +1,5 @@
 .sales-report{color:#0f172a;font-size:14px;font-family:Inter,system-ui,sans-serif;--sales-border:#dbe3ee;--sales-blue:#1d5fd6}
 .eod-shell{background:#f4f7fb;color:#0f172a;font-family:Inter,system-ui,sans-serif}
-.eod-shell .eod-sidebar{background:#0f1b2d;color:#e2e8f0;border-color:#263449}
-.eod-shell .eod-sidebar>div{border-color:#263449}
-.eod-shell .eod-sidebar nav button{color:#cbd5e1;border-radius:8px;min-height:40px;font-size:13px}
-.eod-shell .eod-sidebar nav button svg{color:inherit}
-.eod-shell .eod-sidebar nav button:hover{background:#16243a;color:#fff}
-.eod-shell .eod-sidebar nav button[aria-current=page]{background:#1d4ed8;color:#fff}
-.eod-shell .eod-sidebar>div:last-child .bg-slate-100{background:#16243a;color:#fff}
-.eod-shell .eod-sidebar>div:first-child button:hover{background:#16243a}
 .eod-shell .eod-app-header{background:#fff;border-color:#dbe3ee;backdrop-filter:none}
 .eod-page{padding:14px 18px 24px;min-width:0}
 .eod-page>header{margin-bottom:14px}.eod-page h1{font-size:28px;font-weight:800;line-height:1.25}

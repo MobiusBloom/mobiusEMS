@@ -194,7 +194,7 @@ export const AppLayout = () => {
   const sidebar = (
     <aside
       className={cn(
-        "eod-sidebar flex h-full max-w-[86vw] flex-col border-r bg-white transition-[width] duration-200",
+        "flex h-full max-w-[86vw] flex-col border-r bg-white transition-[width] duration-200",
         collapsed ? "w-[76px]" : "w-[260px]"
       )}
     >
