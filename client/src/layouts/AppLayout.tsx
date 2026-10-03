@@ -40,6 +40,7 @@ const coreGroups: { label: string; items: NavItem[] }[] = [
     items: [
       { label: "Dashboard", icon: CircleGauge, path: "/", section: "section.dashboard" },
       { label: "My profile", icon: UserRound, path: "/me", section: "section.profile" },
+      { label: "EOD updates", icon: FileText, path: "/eod" },
       { label: "AI Workspace", icon: Bot, path: "/ai-workspace", section: "section.ai_workspace", requiredFeature: "aiEnabled" },
     ],
   },
@@ -77,7 +78,6 @@ const coreGroups: { label: string; items: NavItem[] }[] = [
     items: [
       { label: "Tasks & projects", icon: BriefcaseBusiness, path: "/work", section: "section.work" },
       { label: "Task tracker", icon: ListTodo, path: "/task-tracker", section: "section.task_tracker" },
-      { label: "EOD updates", icon: FileText, path: "/eod" },
     ],
   },
   {

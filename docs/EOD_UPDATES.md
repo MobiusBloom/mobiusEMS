@@ -12,7 +12,7 @@ For MobiusEMS, use a brief daily journal: completed outcomes, work in progress, 
 
 ## Using the section
 
-Open **Work & projects → EOD updates** (`/eod`). All authenticated users with an active employee profile can write their own updates. Dates use Asia/Kolkata (IST); past dates are supported and future dates are rejected. There is one record per employee per date per tenant.
+Open **Workspace → EOD updates** (`/eod`). All authenticated users with an active employee profile can write their own updates. Dates use Asia/Kolkata (IST); past dates are supported and future dates are rejected. There is one record per employee per date per tenant.
 
 Employees can save incomplete private drafts, submit, edit submissions, and view super-admin feedback. Submission requires completed work or work in progress plus next priorities. At-risk or blocked work requires an explanation. Updating a submission clears the earlier acknowledgement and feedback so the changed report can be reviewed again. Submitted reports cannot return to draft.
 
