@@ -404,3 +404,5 @@ export interface SPOFItem {
   departmentName: string;
   verifiedRating: number;
 }
+
+export * from "./salesEod.js";

@@ -116,3 +116,14 @@ No automatic reminders/messages, simplistic productivity score, or AI-generated 
 ## Validation
 
 EOD tests cover ownership, draft privacy, submitted-to-draft rejection, legacy reading, snapshot preservation, task links, review access/stale submissions, RBAC scopes, hierarchy/department resolution, templates/field types, source summaries, IST dates, tenant rejection, range filters, blocker analytics and neutral commitments. Run npm test, npm run typecheck and npm run build. Repository-wide lint currently has unrelated existing errors; changed EOD files are linted separately.
+
+
+## Sales reference form and IT intelligence
+
+New fallback Sales reports use the seven-section Sales EOD reference: Sales & Revenue, Pipeline, Sales Activity, Important Follow-ups, Challenges / Blockers, Tomorrow's Plan, and Daily Summary. The employee identity and reporting manager are read-only profile context. INR figures are manually reported; the summary calculates revenue using booked revenue, falling back to closed sales, plus deals, qualified leads, pipeline, and demos. CRM evidence stays separate, with original currencies and collection availability preserved.
+
+Follow-ups support up to twelve rows (maximum 4,000 serialized characters), stored as validated JSON in the template response `importantFollowups` and displayed as customer cards during manager review. Negative values, fractional activity counts, unsupported statuses, invalid dates, and closed deals without customer / revenue context are rejected by the server. Drafts may omit closed-deal context. Sales planning signals flag past-date follow-ups, missing next actions, missing closing dates, and expected closures above the entered daily pipeline. These are deterministic rules, not an AI prediction or performance score.
+
+IT / Engineering reports show an intelligence panel built from the displayed task snapshot: delivered work, development, review queue, blockers, overdue tasks, and rework. New Engineering fallback templates also capture release / PR / ticket evidence and testing notes. Existing submitted reports retain their frozen template and responses; saved tenant templates continue to take precedence. No template or production database migration runs automatically.
+
+To upgrade a saved Sales tenant template, select it in Templates, choose **Use Sales reference**, keep the intended department/designation scope, then save the new version. This updates future reports; existing report snapshots remain unchanged.
