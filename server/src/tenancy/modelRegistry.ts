@@ -15,6 +15,7 @@ import "../models/ContributionReview.js";
 import "../models/ContributionSnapshot.js";
 import "../models/DailyTodo.js";
 import "../models/EodUpdate.js";
+import "../models/EodTemplate.js";
 import "../models/Department.js";
 import "../models/Designation.js";
 import "../models/Document.js";

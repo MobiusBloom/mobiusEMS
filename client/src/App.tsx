@@ -96,7 +96,7 @@ export const App = () => <Suspense fallback={<PageLoader/>}><ScrollToTop/><Route
     <Route element={<PermissionRoute permissions={["section.employees"]}/>}><Route path="employees" element={<EmployeesPage/>}/><Route path="employees/:id" element={<EmployeeProfilePage/>}/></Route>
     <Route element={<PermissionRoute permissions={["section.organization"]}/>}><Route path="organization" element={<OrganizationPage/>}/></Route>
     <Route path="hierarchy" element={<OrgHierarchyPage/>}/>
-    <Route path="eod" element={<EodPage/>}/>
+    <Route element={<PermissionRoute permissions={["section.eod"]}/>}><Route path="eod" element={<EodPage/>}/></Route>
     <Route element={<PermissionRoute permissions={["section.skills"]}/>}><Route path="skills" element={<SkillsPage/>}/><Route path="skills/builder" element={<SkillsPage/>}/></Route>
     <Route element={<PermissionRoute permissions={["section.assessments"]}/>}><Route path="assessments" element={<AssessmentsPage/>}/></Route>
     <Route element={<PermissionRoute permissions={["section.work"]}/>}><Route path="work" element={<WorkPage/>}/></Route>

@@ -1,3 +1,4 @@
+export * from "./eod.js";
 export const ROLES = ["SUPER_ADMIN", "HR_ADMIN", "DEPARTMENT_HEAD", "MANAGER", "TEAM_LEAD", "EMPLOYEE", "APPLICANT"] as const;
 export type RoleName = (typeof ROLES)[number];
 
@@ -14,6 +15,7 @@ export const SECTION_ACCESS = [
   { key: "section.skills", label: "Skills", group: "Capability" },
   { key: "section.assessments", label: "Assessments", group: "Capability" },
   { key: "section.work", label: "Tasks & projects", group: "Work" },
+  { key: "section.eod", label: "Daily work intelligence", group: "Work" },
   { key: "section.task_tracker", label: "Task tracker", group: "Work" },
   { key: "section.performance", label: "Goals & performance", group: "Performance" },
   { key: "section.contribution", label: "Contribution", group: "Performance" },
@@ -28,6 +30,9 @@ export type SectionPermissionName = (typeof SECTION_ACCESS)[number]["key"];
 export const SECTION_PERMISSIONS = SECTION_ACCESS.map((section) => section.key) as unknown as readonly [SectionPermissionName, ...SectionPermissionName[]];
 
 export const PERMISSIONS = [
+  "eod.submit", "eod.view.self", "eod.view.team", "eod.view.department", "eod.view.all",
+  "eod.review.team", "eod.review.department", "eod.review.all",
+  "eod.analytics.self", "eod.analytics.team", "eod.analytics.department", "eod.analytics.all", "eod.template.manage",
   "employee.view", "employee.create", "employee.update", "employee.deactivate",
   "department.view", "department.create", "department.update",
   "skill.create", "skill.update", "skill.verify", "skill.reject",
@@ -69,14 +74,16 @@ const SELF_SALES_PERMISSIONS: readonly PermissionName[] = [
   "sales.target.view", "sales.customer.view", "sales.customer.manage.self", "sales.pipeline.view", "sales.pipeline.manage",
   "sales.revenue.view", "sales.channel_partner.view", "sales.channel_partner.manage.self", "employee_map.self", "sales.map.self",
 ];
+const SELF_EOD_PERMISSIONS: readonly PermissionName[] = ["eod.submit", "eod.view.self", "eod.analytics.self"];
+const TEAM_EOD_PERMISSIONS: readonly PermissionName[] = [...SELF_EOD_PERMISSIONS, "eod.view.team", "eod.review.team", "eod.analytics.team"];
 
 export const ROLE_PERMISSIONS: Record<RoleName, readonly PermissionName[]> = {
   SUPER_ADMIN: PERMISSIONS,
-  HR_ADMIN: [...PERMISSIONS.filter((permission) => !permission.startsWith("section.") && !["settings.manage", "skill.verify"].includes(permission) && !permission.startsWith("sales.") && !permission.startsWith("employee_map.")), ...HR_SALES_PERMISSIONS, ...SECTION_PERMISSIONS.filter((permission) => !["section.attendance", "section.profile", "section.task_tracker", "section.resumes", "section.resume_screener", "section.email_automation"].includes(permission))],
-  DEPARTMENT_HEAD: ["employee.view", "department.view", "skill.verify", "task.create", "task.assign", "task.update", "task.review", "performance.view", "performance.review", "goal.create", "goal.update", "kpi.evaluate", "document.view", "report.view", ...TEAM_SALES_PERMISSIONS, ...SECTION_PERMISSIONS.filter((permission) => !["section.attendance", "section.profile", "section.task_tracker", "section.resumes", "section.applicants", "section.resume_screener", "section.email_automation"].includes(permission))],
-  MANAGER: ["employee.view", "department.view", "task.create", "task.assign", "task.update", "task.review", "performance.view", "performance.review", "goal.create", "goal.update", "kpi.evaluate", "document.view", "report.view", ...TEAM_SALES_PERMISSIONS, ...SECTION_PERMISSIONS.filter((permission) => !["section.attendance", "section.profile", "section.task_tracker", "section.resumes", "section.applicants", "section.resume_screener", "section.email_automation"].includes(permission))],
-  TEAM_LEAD: ["employee.view", "department.view", "task.create", "task.assign", "task.update", "task.review", "performance.view", "performance.review", "goal.create", "goal.update", "document.view", "report.view", ...TEAM_SALES_PERMISSIONS, ...SECTION_PERMISSIONS.filter((permission) => !["section.attendance", "section.profile", "section.task_tracker", "section.resumes", "section.applicants", "section.resume_screener", "section.email_automation"].includes(permission))],
-  EMPLOYEE: ["employee.view", "department.view", "task.update", "performance.view", "goal.update", "document.view", "document.upload", ...SELF_SALES_PERMISSIONS, ...SECTION_PERMISSIONS.filter((permission) => !["section.employees", "section.organization", "section.applicants", "section.resume_screener", "section.email_automation"].includes(permission))],
+  HR_ADMIN: [...PERMISSIONS.filter((permission) => !permission.startsWith("section.") && !["settings.manage", "skill.verify"].includes(permission) && !permission.startsWith("sales.") && !permission.startsWith("employee_map.") && !permission.startsWith("eod.")), ...SELF_EOD_PERMISSIONS, ...HR_SALES_PERMISSIONS, ...SECTION_PERMISSIONS.filter((permission) => !["section.attendance", "section.profile", "section.task_tracker", "section.resumes", "section.resume_screener", "section.email_automation"].includes(permission))],
+  DEPARTMENT_HEAD: [...SELF_EOD_PERMISSIONS, "eod.view.department", "eod.review.department", "eod.analytics.department", "employee.view", "department.view", "skill.verify", "task.create", "task.assign", "task.update", "task.review", "performance.view", "performance.review", "goal.create", "goal.update", "kpi.evaluate", "document.view", "report.view", ...TEAM_SALES_PERMISSIONS, ...SECTION_PERMISSIONS.filter((permission) => !["section.attendance", "section.profile", "section.task_tracker", "section.resumes", "section.applicants", "section.resume_screener", "section.email_automation"].includes(permission))],
+  MANAGER: [...TEAM_EOD_PERMISSIONS, "employee.view", "department.view", "task.create", "task.assign", "task.update", "task.review", "performance.view", "performance.review", "goal.create", "goal.update", "kpi.evaluate", "document.view", "report.view", ...TEAM_SALES_PERMISSIONS, ...SECTION_PERMISSIONS.filter((permission) => !["section.attendance", "section.profile", "section.task_tracker", "section.resumes", "section.applicants", "section.resume_screener", "section.email_automation"].includes(permission))],
+  TEAM_LEAD: [...TEAM_EOD_PERMISSIONS, "employee.view", "department.view", "task.create", "task.assign", "task.update", "task.review", "performance.view", "performance.review", "goal.create", "goal.update", "document.view", "report.view", ...TEAM_SALES_PERMISSIONS, ...SECTION_PERMISSIONS.filter((permission) => !["section.attendance", "section.profile", "section.task_tracker", "section.resumes", "section.applicants", "section.resume_screener", "section.email_automation"].includes(permission))],
+  EMPLOYEE: [...SELF_EOD_PERMISSIONS, "employee.view", "department.view", "task.update", "performance.view", "goal.update", "document.view", "document.upload", ...SELF_SALES_PERMISSIONS, ...SECTION_PERMISSIONS.filter((permission) => !["section.employees", "section.organization", "section.applicants", "section.resume_screener", "section.email_automation"].includes(permission))],
   APPLICANT: ["section.assessments"]
 };
 
