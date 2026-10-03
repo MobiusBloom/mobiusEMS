@@ -29,6 +29,37 @@ export const NumberTicker: React.FC<NumberTickerProps> = ({
   const hasAnimated = useRef<boolean>(false);
 
   useEffect(() => {
+    const runAnimation = () => {
+      const startTime = performance.now() + delay * 1000;
+      const totalDuration = duration * 1000;
+      const startVal = direction === "down" ? value : 0;
+      const endVal = direction === "down" ? 0 : value;
+
+      const tick = (currentTime: number) => {
+        if (currentTime < startTime) {
+          requestAnimationFrame(tick);
+          return;
+        }
+        const elapsed = currentTime - startTime;
+        const progress = Math.min(elapsed / totalDuration, 1);
+
+        // easeOutExpo
+        const easeProgress =
+          progress === 1 ? 1 : 1 - Math.pow(2, -10 * progress);
+
+        const current = startVal + (endVal - startVal) * easeProgress;
+        setDisplayValue(current);
+
+        if (progress < 1) {
+          requestAnimationFrame(tick);
+        } else {
+          setDisplayValue(endVal);
+        }
+      };
+
+      requestAnimationFrame(tick);
+    };
+
     const observer = new IntersectionObserver(
       (entries) => {
         entries.forEach((entry) => {
@@ -47,37 +78,6 @@ export const NumberTicker: React.FC<NumberTickerProps> = ({
 
     return () => observer.disconnect();
   }, [value, direction, delay, duration]);
-
-  const runAnimation = () => {
-    const startTime = performance.now() + delay * 1000;
-    const totalDuration = duration * 1000;
-    const startVal = direction === "down" ? value : 0;
-    const endVal = direction === "down" ? 0 : value;
-
-    const tick = (currentTime: number) => {
-      if (currentTime < startTime) {
-        requestAnimationFrame(tick);
-        return;
-      }
-      const elapsed = currentTime - startTime;
-      const progress = Math.min(elapsed / totalDuration, 1);
-
-      // easeOutExpo
-      const easeProgress =
-        progress === 1 ? 1 : 1 - Math.pow(2, -10 * progress);
-
-      const current = startVal + (endVal - startVal) * easeProgress;
-      setDisplayValue(current);
-
-      if (progress < 1) {
-        requestAnimationFrame(tick);
-      } else {
-        setDisplayValue(endVal);
-      }
-    };
-
-    requestAnimationFrame(tick);
-  };
 
   const formatted = Intl.NumberFormat("en-US", {
     minimumFractionDigits: decimalPlaces,

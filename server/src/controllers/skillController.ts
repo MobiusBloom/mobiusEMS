@@ -118,10 +118,7 @@ export const submitAssessment = async (request: Request, response: Response): Pr
 };
 
 export const deleteAssessment = async (request: Request, response: Response): Promise<void> => {
-  const result = await service.deleteAssessment(String(request.params.id), {
-    id: request.user!.id,
-    role: request.user!.role
-  });
+  const result = await service.deleteAssessment(String(request.params.id));
   response.json({
     success: true,
     message: result.message

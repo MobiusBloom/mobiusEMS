@@ -131,7 +131,7 @@ export const simulateCompensationRule = (ruleConfig: CompensationRuleConfig, tes
 };
 
 export const closeCompensationPeriod = async (viewer: SessionUser, body: { periodId?: string; periodType?: "MONTHLY" | "QUARTERLY" | "YEARLY"; periodStart?: Date; periodEnd?: Date }) => {
-  let period = body.periodId ? await CompensationPeriod.findById(body.periodId) : await CompensationPeriod.findOneAndUpdate(
+  const period = body.periodId ? await CompensationPeriod.findById(body.periodId) : await CompensationPeriod.findOneAndUpdate(
     { periodType: body.periodType, periodStart: body.periodStart, periodEnd: body.periodEnd },
     { $setOnInsert: { periodType: body.periodType, periodStart: body.periodStart, periodEnd: body.periodEnd, status: "OPEN" } },
     { upsert: true, new: true },

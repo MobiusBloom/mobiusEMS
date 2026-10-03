@@ -6,11 +6,15 @@ import { AppError } from "../utils/AppError.js";
 import { roleSkillCatalog } from "../data/roleSkillCatalog.js";
 import { profilePhotoUrl } from "./storageService.js";
 
+type OrganizationReference = { _id?: { toString(): string }; name?: string; code?: string; level?: string };
+type ManagerReference = { _id?: { toString(): string }; firstName?: string; lastName?: string; employeeId?: string; profilePhotoKey?: string };
+type UserReference = { _id?: { toString(): string }; role?: string; toString(): string };
+
 type DepartmentInput = { name: string; code?: string; description?: string; capabilities?: ("SALES_MODULE")[] };
 type TeamInput = Omit<DepartmentInput, "capabilities"> & { department: string };
 type DesignationInput = Omit<DepartmentInput, "capabilities"> & { department?: string; level?: string; catalogRole?: string; customSkills?: DesignationSkillItem[] };
 
-const generateUniqueOrgCode = async (model: any, name: string, departmentId?: string) => {
+const generateUniqueOrgCode = async (model: { exists(filter: Record<string, unknown>): PromiseLike<unknown> }, name: string, departmentId?: string) => {
   const base = name.trim().toUpperCase().replace(/[^A-Z0-9_-]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 14) || "ORG";
   let candidate = base.slice(0, 20);
   const filter: Record<string, unknown> = { isActive: true, code: candidate };
@@ -114,8 +118,8 @@ export const getOrganizationHierarchyFlow = async () => {
 
   const mappedEmployees = rawEmployees.map((emp) => {
     const seniority = calculateSeniorityRank({
-      designationTitle: (emp.designation as any)?.name,
-      designationLevel: (emp.designation as any)?.level,
+      designationTitle: (emp.designation as unknown as OrganizationReference)?.name,
+      designationLevel: (emp.designation as unknown as OrganizationReference)?.level,
     });
 
     return {
@@ -129,40 +133,40 @@ export const getOrganizationHierarchyFlow = async () => {
       profilePhotoUrl: profilePhotoUrl(emp.profilePhotoKey),
       department: emp.department
         ? {
-            _id: (emp.department as any)._id?.toString() || "",
-            name: (emp.department as any).name || "",
-            code: (emp.department as any).code || "",
+            _id: (emp.department as unknown as OrganizationReference)._id?.toString() || "",
+            name: (emp.department as unknown as OrganizationReference).name || "",
+            code: (emp.department as unknown as OrganizationReference).code || "",
           }
         : null,
       team: emp.team
         ? {
-            _id: (emp.team as any)._id?.toString() || "",
-            name: (emp.team as any).name || "",
-            code: (emp.team as any).code || "",
+            _id: (emp.team as unknown as OrganizationReference)._id?.toString() || "",
+            name: (emp.team as unknown as OrganizationReference).name || "",
+            code: (emp.team as unknown as OrganizationReference).code || "",
           }
         : null,
       designation: emp.designation
         ? {
-            _id: (emp.designation as any)._id?.toString() || "",
-            name: (emp.designation as any).name || "",
-            code: (emp.designation as any).code || "",
-            level: (emp.designation as any).level || "",
+            _id: (emp.designation as unknown as OrganizationReference)._id?.toString() || "",
+            name: (emp.designation as unknown as OrganizationReference).name || "",
+            code: (emp.designation as unknown as OrganizationReference).code || "",
+            level: (emp.designation as unknown as OrganizationReference).level || "",
           }
         : null,
       reportingManager: emp.reportingManager
         ? {
-            _id: (emp.reportingManager as any)._id?.toString() || "",
-            firstName: (emp.reportingManager as any).firstName || "",
-            lastName: (emp.reportingManager as any).lastName || "",
-            name: `${(emp.reportingManager as any).firstName || ""} ${(emp.reportingManager as any).lastName || ""}`.trim(),
-            employeeId: (emp.reportingManager as any).employeeId || "",
-            profilePhotoUrl: profilePhotoUrl((emp.reportingManager as any).profilePhotoKey),
+            _id: (emp.reportingManager as unknown as ManagerReference)._id?.toString() || "",
+            firstName: (emp.reportingManager as unknown as ManagerReference).firstName || "",
+            lastName: (emp.reportingManager as unknown as ManagerReference).lastName || "",
+            name: `${(emp.reportingManager as unknown as ManagerReference).firstName || ""} ${(emp.reportingManager as unknown as ManagerReference).lastName || ""}`.trim(),
+            employeeId: (emp.reportingManager as unknown as ManagerReference).employeeId || "",
+            profilePhotoUrl: profilePhotoUrl((emp.reportingManager as unknown as ManagerReference).profilePhotoKey),
           }
         : null,
       seniorityRank: seniority.rank,
       seniorityTierName: seniority.tierName,
-      role: (emp.user as any)?.role || "EMPLOYEE",
-      userId: (emp.user as any)?._id?.toString() || (emp.user as any)?.toString() || "",
+      role: (emp.user as unknown as UserReference)?.role || "EMPLOYEE",
+      userId: (emp.user as unknown as UserReference)?._id?.toString() || (emp.user as unknown as UserReference)?.toString() || "",
       status: emp.status,
       employmentType: emp.employmentType,
       dateOfJoining: emp.dateOfJoining,

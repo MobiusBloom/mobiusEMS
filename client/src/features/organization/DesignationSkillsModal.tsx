@@ -49,14 +49,18 @@ export const DesignationSkillsModal = ({
       setTargetSkills(targetDesignation.customSkills || []);
       setSelectedTemplateRole(targetDesignation.catalogRole || "");
       setShowAiBuilder(initialShowAi || !targetDesignation.customSkills?.length);
-    } else if (allDesignations.length > 0 && !selectedId) {
+    }
+  }, [targetDesignation, initialShowAi]);
+
+  useEffect(() => {
+    if (!targetDesignation && allDesignations.length > 0 && !selectedId) {
       const first = allDesignations[0];
       setSelectedId(first._id);
       setTargetSkills(first.customSkills || []);
       setSelectedTemplateRole(first.catalogRole || "");
       setShowAiBuilder(initialShowAi || !first.customSkills?.length);
     }
-  }, [targetDesignation, allDesignations]);
+  }, [targetDesignation, allDesignations, initialShowAi, selectedId]);
 
   const handleSelectDesignation = (id: string) => {
     setSelectedId(id);
@@ -104,8 +108,8 @@ export const DesignationSkillsModal = ({
         setAiFeedback(`Generated ${generated.length} skills tailored for ${activeDesignation.name}!`);
       }
       setShowAiBuilder(false);
-    } catch (err: any) {
-      setAiFeedback(err?.message || "Failed to generate skills. Please try again.");
+    } catch (err) {
+      setAiFeedback((err instanceof Error ? err.message : "") || "Failed to generate skills. Please try again.");
     } finally {
       setIsGeneratingAi(false);
     }
@@ -178,8 +182,8 @@ export const DesignationSkillsModal = ({
       setTimeout(() => {
         onClose();
       }, 900);
-    } catch (err: any) {
-      alert(err?.message || "Failed to save designation skills");
+    } catch (err) {
+      alert((err instanceof Error ? err.message : "") || "Failed to save designation skills");
     } finally {
       setIsSaving(false);
     }

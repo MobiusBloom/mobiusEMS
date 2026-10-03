@@ -56,8 +56,8 @@ const EmployeeClock = () => {
       setReqError("");
       await queryClient.invalidateQueries({ queryKey: ["attendance", "regularizations"] });
     },
-    onError: (err: any) => {
-      setReqError(err?.message || "Failed to submit regularization request.");
+    onError: (err) => {
+      setReqError((err instanceof Error ? err.message : "") || "Failed to submit regularization request.");
     }
   });
 

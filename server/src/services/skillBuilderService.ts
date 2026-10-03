@@ -105,7 +105,7 @@ Generate exactly ${count} skills with practical assessment questions.`;
       throw new Error("AI did not return an array of skills");
     }
 
-    const skills: DesignationSkillItem[] = parsed.slice(0, count).map((item: any, idx: number) => {
+    const skills: DesignationSkillItem[] = parsed.slice(0, count).map((item: Record<string, unknown>, idx: number) => {
       const name = String(item.name || `Skill ${idx + 1}`).trim();
       const category = String(item.category || input.department || "General").trim();
       const level = normalizeLevel(item.level);

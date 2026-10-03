@@ -63,13 +63,13 @@ export const AssessmentsPage = () => {
     },
   });
 
-  const allAssessments = assessmentsQuery.data?.items ?? [];
+  const allAssessments = useMemo(() => assessmentsQuery.data?.items ?? [], [assessmentsQuery.data?.items]);
 
   // Current employee's assessments
   const myAssessments = useMemo(() => {
     return allAssessments.filter((item) => {
-      const assignedUser = (item.assignedEmployee as any)?.user;
-      const assignedUserId = assignedUser?._id || assignedUser || "";
+      const assignedUser = item.assignedEmployee?.user;
+      const assignedUserId = (typeof assignedUser === "string" ? assignedUser : assignedUser?._id) || "";
       // If backend filtered for employee, all returned items belong to them
       if (["EMPLOYEE", "APPLICANT"].includes(user?.role ?? "")) return true;
       return assignedUserId === user?.id;

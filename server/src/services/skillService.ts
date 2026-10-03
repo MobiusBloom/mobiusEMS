@@ -1,9 +1,10 @@
+import { Types } from "mongoose";
 import type { SPOFItem } from "@mobius-ems/shared";
 import { Employee } from "../models/Employee.js"; import { EmployeeSkill, type EmployeeSkillDocument } from "../models/EmployeeSkill.js"; import { Skill } from "../models/Skill.js"; import { SkillVerification, type SkillVerificationDocument } from "../models/SkillVerification.js"; import { Designation, type DesignationSkillItem } from "../models/Designation.js"; import { AppError } from "../utils/AppError.js"; import { writeAudit } from "./auditService.js";
 import { Assessment, type AssessmentDocument } from "../models/Assessment.js"; import { AssessmentResult } from "../models/AssessmentResult.js";
 import { recalculateProfileCompletion } from "./profileCompletionService.js";
 import { roleSkillCatalog } from "../data/roleSkillCatalog.js";
-import { RoleSkillAssessment } from "../models/RoleSkillAssessment.js";
+import { RoleSkillAssessment, type RoleSkillAssessmentDocument } from "../models/RoleSkillAssessment.js";
 import { Task } from "../models/Task.js";
 import { buildSkillEvidence } from "./skillEvidence.js";
 import { recalculateAllRanks } from "./skillCredibilityService.js";
@@ -31,7 +32,6 @@ const legacyDesignationRole = (name: string, code: string) => {
   if (combined.includes("admin") || combined.includes("operation")) return "Admin";
   return undefined;
 };
-const assignedCatalogRole = async (designation: { _id?: unknown; name: string; code: string; catalogRole?: string }) => { const role = designation.catalogRole ?? legacyDesignationRole(designation.name, designation.code); if (!role || !catalogRoles.includes(role)) throw new AppError(`No skill catalogue is assigned to designation ${designation.name}. Ask Super Admin to configure it.`, 422, "DESIGNATION_SKILL_CATALOG_MISSING"); if (!designation.catalogRole && designation._id) await Designation.updateOne({ _id: designation._id }, { $set: { catalogRole: role } }); return role; };
 export const listSkills = async () => Skill.find({ isActive: true }).sort({ category: 1, name: 1 }).lean();
 export const createSkill = async (input: { name: string; category: string; description?: string }) => Skill.create(input);
 export const claimSkill = async (userId: string, input: { skill: string; selfRating: number; yearsOfExperience: number; lastUsed?: Date; description?: string; evidence: EmployeeSkillDocument["evidence"] }) => { const employee = await Employee.findOne({ user: userId, isActive: true }); if (!employee) throw new AppError("Employee profile not found", 404); if (!await Skill.exists({ _id: input.skill, isActive: true })) throw new AppError("Skill not found", 404); const claim = await EmployeeSkill.findOneAndUpdate({ employee: employee._id, skill: input.skill }, { $set: { ...input, verificationStatus: "PENDING", verifiedRating: undefined, latestVerification: undefined, isActive: true } }, { upsert: true, new: true, runValidators: true }).populate("skill", "name category"); await recalculateProfileCompletion(employee.id); return claim; };
@@ -52,7 +52,7 @@ export const roleCatalogAssessment = async (userId: string) => {
   let assignedRole = employee.designation.name;
 
   if (employee.designation.customSkills && employee.designation.customSkills.length > 0) {
-    catalogItems = employee.designation.customSkills.map((skill: any) => ({
+    catalogItems = employee.designation.customSkills.map((skill: DesignationSkillItem & { toObject?: () => DesignationSkillItem }) => ({
       ...(typeof skill.toObject === "function" ? skill.toObject() : skill),
       role: employee.designation.name,
     }));
@@ -69,7 +69,7 @@ export const roleCatalogAssessment = async (userId: string) => {
   }
 
   const taskEvidence = assessment ? await Task.find({ assignedEmployee: employee._id, isActive: true }).select("taskId name description completionNote skillId skillName status estimatedHours actualHours deadline completionDate qualityRating reopenCount").sort({ updatedAt: -1 }).lean() : [];
-  const assessmentWithEvidence = assessment ? { ...assessment, evidenceAnalytics: assessment.scores.map((score) => ({ skillId: score.skillId, ...buildSkillEvidence(score, taskEvidence as any) })) } : null;
+  const assessmentWithEvidence = assessment ? { ...assessment, evidenceAnalytics: assessment.scores.map((score) => ({ skillId: score.skillId, ...buildSkillEvidence(score, taskEvidence) })) } : null;
   return {
     catalog: assessment ? [] : catalogItems,
     assessment: assessmentWithEvidence,
@@ -92,7 +92,7 @@ export const submitRoleCatalogAssessment = async (userId: string, input: { ratin
   let roleName = employee.designation.name;
 
   if (employee.designation.customSkills && employee.designation.customSkills.length > 0) {
-    expected = employee.designation.customSkills.map((skill: any) => ({
+    expected = employee.designation.customSkills.map((skill: DesignationSkillItem & { toObject?: () => DesignationSkillItem }) => ({
       ...(typeof skill.toObject === "function" ? skill.toObject() : skill),
       role: employee.designation.name,
     }));
@@ -148,14 +148,14 @@ export const roleCatalogAssessmentByEmployee = async (employeeId: string) => {
 
   let assessment = await RoleSkillAssessment.findOne({ employee: employee._id }).lean();
   if (!assessment && employee.user) {
-    assessment = await RoleSkillAssessment.findOne({ employee: employee.user as any }).lean();
+    assessment = await RoleSkillAssessment.findOne({ employee: employee.user }).lean();
   }
 
   const [employeeSkills, completedAssessments] = await Promise.all([
     EmployeeSkill.find({
-      $or: [{ employee: employee._id }, ...(employee.user ? [{ employee: employee.user as any }] : [])],
+      $or: [{ employee: employee._id }, ...(employee.user ? [{ employee: employee.user }] : [])],
       isActive: true
-    }).populate("skill", "name category").lean(),
+    }).populate<{ skill: { name: string; category: string } | null }>("skill", "name category").lean(),
     Assessment.find({
       assignedEmployee: employee._id,
       status: "COMPLETED"
@@ -166,7 +166,7 @@ export const roleCatalogAssessmentByEmployee = async (employeeId: string) => {
   let assignedRole = employee.designation.name;
 
   if (employee.designation.customSkills && employee.designation.customSkills.length > 0) {
-    catalogItems = employee.designation.customSkills.map((skill: any) => ({
+    catalogItems = employee.designation.customSkills.map((skill: DesignationSkillItem & { toObject?: () => DesignationSkillItem }) => ({
       ...(typeof skill.toObject === "function" ? skill.toObject() : skill),
       role: employee.designation.name,
     }));
@@ -184,8 +184,8 @@ export const roleCatalogAssessmentByEmployee = async (employeeId: string) => {
 
   const submittedSkills = employeeSkills.map((es) => ({
     skillId: String(es._id),
-    name: (es.skill as any)?.name || "Capability Skill",
-    category: (es.skill as any)?.category || "General",
+    name: es.skill?.name || "Capability Skill",
+    category: es.skill?.category || "General",
     selfRating: es.selfRating,
     verifiedRating: es.verifiedRating,
     yearsOfExperience: es.yearsOfExperience,
@@ -194,7 +194,7 @@ export const roleCatalogAssessmentByEmployee = async (employeeId: string) => {
     evidence: es.evidence || []
   }));
 
-  let synthesizedAssessment = assessment;
+  let synthesizedAssessment: (RoleSkillAssessmentDocument & { _id: Types.ObjectId | string }) | null = assessment;
   if (!synthesizedAssessment && employeeSkills.length > 0 && catalogItems.length > 0) {
     const norm = (str: string) => str.toLowerCase().replace(/[^a-z0-9]/g, "");
     const empAvg = Math.round((employeeSkills.reduce((sum, s) => sum + s.selfRating, 0) / employeeSkills.length) * 10) / 10;
@@ -202,13 +202,14 @@ export const roleCatalogAssessmentByEmployee = async (employeeId: string) => {
     const mappedScores = catalogItems.map((catSkill) => {
       const catNorm = norm(catSkill.name);
       const matched = employeeSkills.find((es) => {
-        const esNorm = norm((es.skill as any)?.name || "");
+        const esNorm = norm(es.skill?.name || "");
         return esNorm === catNorm || catNorm.includes(esNorm) || esNorm.includes(catNorm);
       });
 
       return {
         skillId: catSkill.id,
         name: catSkill.name,
+        description: catSkill.description,
         category: catSkill.category,
         level: catSkill.level,
         rating: matched ? matched.selfRating : empAvg,
@@ -218,20 +219,20 @@ export const roleCatalogAssessmentByEmployee = async (employeeId: string) => {
     });
 
     synthesizedAssessment = {
-      _id: "synthesized-" + String(employee._id) as any,
-      employee: employee._id as any,
+      _id: "synthesized-" + String(employee._id),
+      employee: employee._id,
       role: assignedRole,
       designation: employee.designation.name,
-      scores: mappedScores as any,
+      scores: mappedScores,
       averageRating: empAvg,
       demonstratedAverage: empAvg,
       overallCredibilityScore: 100,
-      submittedAt: (employeeSkills[0] as any)?.updatedAt || new Date()
-    } as any;
+      submittedAt: employeeSkills[0]?.updatedAt || new Date()
+    };
   }
 
   const taskEvidence = synthesizedAssessment ? await Task.find({ assignedEmployee: employee._id, isActive: true }).select("taskId name description completionNote skillId skillName status estimatedHours actualHours deadline completionDate qualityRating reopenCount").sort({ updatedAt: -1 }).lean() : [];
-  const assessmentWithEvidence = synthesizedAssessment ? { ...synthesizedAssessment, evidenceAnalytics: synthesizedAssessment.scores.map((score) => ({ skillId: score.skillId, ...buildSkillEvidence(score, taskEvidence as any) })) } : null;
+  const assessmentWithEvidence = synthesizedAssessment ? { ...synthesizedAssessment, evidenceAnalytics: synthesizedAssessment.scores.map((score) => ({ skillId: score.skillId, ...buildSkillEvidence(score, taskEvidence) })) } : null;
 
   const submissionSource = assessment
     ? "ROLE_ASSESSMENT"
@@ -277,7 +278,7 @@ export const submitRoleCatalogAssessmentByEmployee = async (
   let roleName = employee.designation.name;
 
   if (employee.designation.customSkills && employee.designation.customSkills.length > 0) {
-    expected = employee.designation.customSkills.map((skill: any) => ({
+    expected = employee.designation.customSkills.map((skill: DesignationSkillItem & { toObject?: () => DesignationSkillItem }) => ({
       ...(typeof skill.toObject === "function" ? skill.toObject() : skill),
       role: employee.designation.name,
     }));
@@ -357,14 +358,14 @@ export const listRoleSkillSubmissions = async () => {
 
   const [assessments, allEmployeeSkills, completedAssessments] = await Promise.all([
     RoleSkillAssessment.find({}).populate("employee", "user employeeId firstName lastName").lean(),
-    EmployeeSkill.find({ isActive: true }).populate("skill", "name category").lean(),
+    EmployeeSkill.find({ isActive: true }).populate<{ skill: { name: string; category: string } | null }>("skill", "name category").lean(),
     Assessment.find({ status: "COMPLETED" }).lean()
   ]);
 
   // Index assessments by multiple keys: String(employee._id), String(employee.user), id:employeeId
   const assessmentMap = new Map<string, typeof assessments[0]>();
   for (const a of assessments) {
-    const empObj = a.employee as any;
+    const empObj = a.employee as unknown as { _id?: Types.ObjectId; user?: Types.ObjectId; employeeId?: string };
     if (empObj && typeof empObj === "object" && empObj._id) {
       assessmentMap.set(String(empObj._id), a);
       if (empObj.user) assessmentMap.set(String(empObj.user), a);
@@ -464,19 +465,19 @@ export const listRoleSkillSubmissions = async () => {
         ? Math.round((verifiedList.reduce((sum, s) => sum + (s.verifiedRating ?? s.selfRating), 0) / verifiedList.length) * 10) / 10
         : claimedAvg;
       const latestUpdate = empSkills.reduce((max, s) => {
-        const d = (s as any).updatedAt || (s as any).createdAt || new Date();
+        const d = s.updatedAt || s.createdAt || new Date();
         return d > max ? d : max;
       }, new Date(0));
 
       const scores = empSkills.map((s) => ({
         skillId: String(s._id),
-        name: (s.skill as any)?.name || "Capability Skill",
-        category: (s.skill as any)?.category || "General",
+        name: s.skill?.name || "Capability Skill",
+        category: s.skill?.category || "General",
         level: s.yearsOfExperience >= 5 ? "Advanced" : s.yearsOfExperience >= 2 ? "Intermediate" : "Basic",
         rating: s.selfRating,
         demonstratedRating: s.verifiedRating ?? s.selfRating,
         velocityRatio: 1.0,
-        credibilityStatus: (s.verificationStatus === "VERIFIED" || s.verificationStatus === "EXPERT_VERIFIED" ? "JUSTIFIED" : "UNTESTED") as any,
+        credibilityStatus: (s.verificationStatus === "VERIFIED" || s.verificationStatus === "EXPERT_VERIFIED" ? "JUSTIFIED" : "UNTESTED") as "JUSTIFIED" | "UNTESTED",
         tasksEvaluatedCount: 0,
         implementationNote: s.description || (s.evidence?.[0]?.url ? `Evidence URL: ${s.evidence[0].url}` : "") || "Submitted via Capability Profile"
       }));
@@ -710,7 +711,7 @@ export const listAssessments = async (viewer: { id: string; role: string }) => {
     if ((isEmployee || isApplicant) && !isCompleted && item.questions) {
       return {
         ...item,
-        questions: item.questions.map((q: any) => ({
+        questions: item.questions.map((q) => ({
           id: q.id,
           question: q.question,
           type: q.type,
@@ -739,8 +740,8 @@ export const getAssessmentById = async (id: string, viewer: { id: string; role: 
 
   if (!assessment) throw new AppError("Assessment not found", 404);
 
-  const assignedEmp = assessment.assignedEmployee as any;
-  const assignedCandidate = assessment.assignedCandidate as any;
+  const assignedEmp = assessment.assignedEmployee as unknown as { user?: Types.ObjectId } | null;
+  const assignedCandidate = assessment.assignedCandidate as unknown as { user?: Types.ObjectId } | null;
   const isOwner = assignedEmp?.user?.toString() === viewer.id || assignedCandidate?.user?.toString() === viewer.id;
 
   if (["EMPLOYEE", "APPLICANT"].includes(viewer.role) && !isOwner) {
@@ -750,7 +751,7 @@ export const getAssessmentById = async (id: string, viewer: { id: string; role: 
   if (["EMPLOYEE", "APPLICANT"].includes(viewer.role) && assessment.status !== "COMPLETED" && assessment.questions) {
     return {
       ...assessment,
-      questions: assessment.questions.map((q: any) => ({
+      questions: assessment.questions.map((q) => ({
         id: q.id,
         question: q.question,
         type: q.type,
@@ -767,8 +768,8 @@ export const startAssessment = async (id: string, viewer: { id: string; role: st
   const assessment = await Assessment.findById(id).populate("assignedEmployee", "user").populate("assignedCandidate", "user");
   if (!assessment) throw new AppError("Assessment not found", 404);
 
-  const assignedEmp = assessment.assignedEmployee as any;
-  const assignedCandidate = assessment.assignedCandidate as any;
+  const assignedEmp = assessment.assignedEmployee as unknown as { user?: Types.ObjectId } | null;
+  const assignedCandidate = assessment.assignedCandidate as unknown as { user?: Types.ObjectId } | null;
   if (["EMPLOYEE", "APPLICANT"].includes(viewer.role) && assignedEmp?.user?.toString() !== viewer.id && assignedCandidate?.user?.toString() !== viewer.id) {
     throw new AppError("Access denied to this assessment", 403);
   }
@@ -794,8 +795,8 @@ export const submitAssessment = async (
   const assessment = await Assessment.findById(id).populate("assignedEmployee", "user").populate("assignedCandidate", "user");
   if (!assessment) throw new AppError("Assessment not found", 404);
 
-  const assignedEmp = assessment.assignedEmployee as any;
-  const assignedCandidate = assessment.assignedCandidate as any;
+  const assignedEmp = assessment.assignedEmployee as unknown as { user?: Types.ObjectId } | null;
+  const assignedCandidate = assessment.assignedCandidate as unknown as { user?: Types.ObjectId } | null;
   if (["EMPLOYEE", "APPLICANT"].includes(viewer.role) && assignedEmp?.user?.toString() !== viewer.id && assignedCandidate?.user?.toString() !== viewer.id) {
     throw new AppError("Access denied to this assessment", 403);
   }
@@ -837,7 +838,7 @@ export const submitAssessment = async (
     : Math.round((assessment.passingScore / (assessment.maximumScore || 100)) * 100);
   const result = finalPercentage >= passingScore ? "PASSED" : "FAILED";
 
-  assessment.answers = evaluatedAnswers as any;
+  assessment.answers = evaluatedAnswers;
   assessment.score = totalEarnedPoints;
   assessment.maximumScore = maxPoints;
   assessment.percentage = finalPercentage;
@@ -855,7 +856,7 @@ export const submitAssessment = async (
     attemptDate: new Date(),
     score: totalEarnedPoints,
     result,
-    evaluatedBy: viewer.id as any,
+    evaluatedBy: viewer.id,
     notes: `Assessment submission: ${totalEarnedPoints}/${maxPoints} points (${finalPercentage}%). Status: ${result}.${timedOut ? " Submitted after the time limit." : ""} Focus changes: ${assessment.focusLossCount ?? 0}.`
   });
 
@@ -888,7 +889,7 @@ export const createAssessmentCandidate = async (input: { name: string; email: st
   } catch (error) { await User.deleteOne({ _id: user._id }); throw error; }
 };
 
-export const deleteAssessment = async (id: string, viewer: { id: string; role: string }) => {
+export const deleteAssessment = async (id: string) => {
   const assessment = await Assessment.findById(id);
   if (!assessment) throw new AppError("Assessment not found", 404);
   await AssessmentResult.deleteMany({ assessment: assessment._id });
@@ -907,7 +908,7 @@ export const recordAssessmentResult = async (assessmentId: string, input: { atte
   assessment.result = result;
   assessment.status = "COMPLETED";
   await assessment.save();
-  return AssessmentResult.create({ assessment: assessment._id, employee: assessment.assignedEmployee, attemptDate: input.attemptDate, score: input.score, result, evaluatedBy: evaluator as any, notes: input.notes });
+  return AssessmentResult.create({ assessment: assessment._id, employee: assessment.assignedEmployee, attemptDate: input.attemptDate, score: input.score, result, evaluatedBy: evaluator, notes: input.notes });
 };
 
 export const detectSinglePointOfFailures = async (): Promise<SPOFItem[]> => {
@@ -927,10 +928,10 @@ export const detectSinglePointOfFailures = async (): Promise<SPOFItem[]> => {
     .populate("skill", "name category isActive")
     .lean();
 
-  const skillMap = new Map<string, any[]>();
+  const skillMap = new Map<string, typeof employeeSkills>();
   for (const es of employeeSkills) {
     if (!es.employee || !es.skill) continue;
-    const skill = es.skill as any;
+    const skill = es.skill as unknown as { _id: Types.ObjectId; name: string; category: string; isActive: boolean };
     if (!skill.isActive) continue;
     const skillId = skill._id.toString();
     const list = skillMap.get(skillId) || [];
@@ -941,9 +942,9 @@ export const detectSinglePointOfFailures = async (): Promise<SPOFItem[]> => {
   const spofList: SPOFItem[] = [];
   for (const [skillId, holders] of skillMap.entries()) {
     if (holders.length === 1) {
-      const holder = holders[0];
-      const emp = holder.employee as any;
-      const skl = holder.skill as any;
+      const holder = holders[0]!;
+      const emp = holder.employee as unknown as { _id: Types.ObjectId; firstName: string; lastName: string; employeeId: string; department?: { name: string } };
+      const skl = holder.skill as unknown as { name: string; category: string };
       spofList.push({
         skillId,
         skillName: skl.name,

@@ -91,10 +91,10 @@ export const AssessmentMakerModal = ({
         type: "success",
         text: `Successfully generated ${res.questions.length} questions tailored to your job description!`,
       });
-    } catch (err: any) {
+    } catch (err) {
       setFeedback({
         type: "error",
-        text: err?.message || "Failed to generate assessment questions with AI. Please try again.",
+        text: (err instanceof Error ? err.message : "") || "Failed to generate assessment questions with AI. Please try again.",
       });
     } finally {
       setIsGenerating(false);
@@ -171,10 +171,10 @@ export const AssessmentMakerModal = ({
 
       onCreated();
       onClose();
-    } catch (err: any) {
+    } catch (err) {
       setFeedback({
         type: "error",
-        text: err?.message || "Failed to assign assessment. Please check inputs and try again.",
+        text: (err instanceof Error ? err.message : "") || "Failed to assign assessment. Please check inputs and try again.",
       });
     } finally {
       setIsSubmitting(false);
@@ -281,7 +281,7 @@ export const AssessmentMakerModal = ({
                   <select
                     className="mt-1 h-10 w-full rounded-xl border border-slate-200 bg-white px-2.5 text-xs font-medium text-slate-700 focus:border-brand-500 focus:outline-none"
                     value={difficulty}
-                    onChange={(e) => setDifficulty(e.target.value as any)}
+                    onChange={(e) => setDifficulty(e.target.value as typeof difficulty)}
                   >
                     <option value="BEGINNER">Beginner</option>
                     <option value="INTERMEDIATE">Intermediate</option>

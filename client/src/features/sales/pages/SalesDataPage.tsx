@@ -428,8 +428,8 @@ export const SalesDataPage = ({ path, title }: { path: SalesDataPath; title: str
   });
 
   const compensationSignature = JSON.stringify({ target: form.value, type: form.ruleType, commission: form.commissionRate, max: form.maxPayout, floor: form.floorPercentage, cap: form.capAmount, accelerator: form.acceleratorMultiplier, slabs: form.slabs });
-  const simulation = useMutation({
-    mutationFn: (_signature: string) => {
+  const simulation = useMutation<Awaited<ReturnType<typeof salesApi.simulateCompensation>>, Error, string>({
+    mutationFn: () => {
       const targetAmount = Number(form.value || 0);
       const ruleConfig: Record<string, unknown> = {
         ruleType: form.ruleType,

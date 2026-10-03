@@ -225,7 +225,7 @@ Generate exactly ${count} Multiple Choice Questions (MCQs) in JSON array format:
       throw new Error("Invalid output array");
     }
 
-    const questions: AssessmentQuestion[] = parsed.slice(0, count).map((item: any, index: number) => {
+    const questions: AssessmentQuestion[] = parsed.slice(0, count).map((item: Record<string, unknown>, index: number) => {
       const options = Array.isArray(item.options) ? item.options.map(String) : ["Option A", "Option B", "Option C", "Option D"];
       while (options.length < 4) options.push(`Option ${String.fromCharCode(65 + options.length)}`);
       const correctOptionIndex = typeof item.correctOptionIndex === "number" && item.correctOptionIndex >= 0 && item.correctOptionIndex < options.length
@@ -259,7 +259,7 @@ Generate exactly ${count} Multiple Choice Questions (MCQs) in JSON array format:
       suggestedTimeMinutes,
       suggestedPassingScore
     };
-  } catch (err) {
+  } catch {
     // If AI completion failed or timed out, use fallback questions
     const questions = generateFallbackAssessmentQuestions(input, count);
     const suggestedTimeMinutes = Math.max(10, Math.min(180, Math.round(count * 2.5)));

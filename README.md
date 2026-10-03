@@ -1,6 +1,6 @@
 # MobiusEMS
 
-MobiusEMS is the flagship employee management product of Mobius Bloom Venture Pvt Ltd. It is an independent workforce capability, delivery, growth, and performance-intelligence platform for `employee.whalexy.com`, and does not share code or runtime infrastructure with the Laravel application at `whalexy.com`.
+MobiusEMS is the flagship employee management product of Mobius Bloom Venture Pvt Ltd. It is an independent workforce capability, delivery, growth, and performance-intelligence platform for `ems.mobiusbloom.com`, and does not share code or runtime infrastructure with the Laravel application at `whalexy.com`.
 
 ## What is included
 
@@ -81,10 +81,10 @@ Configure the Cloudinary variables to enable external uploads. Files are stored 
 
 ## Production deployment on Hostinger
 
-1. Create a separate Hostinger Node.js Web App and map `employee.whalexy.com` to it. Do not place this project in Laravel's `public_html`.
-2. Select Node.js 20 or newer. Install with `npm install` and build with `npm run build`.
+1. Create a separate Hostinger Node.js Web App and map `ems.mobiusbloom.com` to it. Do not place this project in Laravel's `public_html`.
+2. Select Node.js 20 or newer. Install build dependencies with `npm ci --include=dev` and build with `npm run build`. CSS tooling is required during the build, even when the hosting environment sets `NODE_ENV=production`.
 3. Set the start command to `npm start`.
-4. Add all production environment values in Hostinger. Use `NODE_ENV=production`, `CLIENT_URL=https://employee.whalexy.com`, and `COOKIE_DOMAIN=employee.whalexy.com`.
+4. Add all production environment values in Hostinger. Use `NODE_ENV=production`, `CLIENT_URL=https://ems.mobiusbloom.com`, and `COOKIE_DOMAIN=ems.mobiusbloom.com`.
 5. Point the subdomain DNS record using the value Hostinger supplies and enable HTTPS.
 
 Express serves `client/dist`, retains `/api/v1/*` for REST endpoints, and applies SPA fallback for client routes.

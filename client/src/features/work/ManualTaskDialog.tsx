@@ -32,13 +32,13 @@ export const ManualTaskDialog = ({ projects, onClose, onSuccess }: { projects: P
 
   {skillsList.length > 0 && <label className="text-sm font-medium sm:col-span-2">Tested Skill (optional — measures delivery velocity)
     <select className="mt-2 h-11 w-full rounded-xl border bg-white px-3 text-sm" value={form.skillId} onChange={(event) => {
-      const selected = skillsList.find((s: any) => (s.skillId || s.id) === event.target.value);
+      const selected = skillsList.find((s) => ("skillId" in s ? s.skillId : s.id) === event.target.value);
       setForm({ ...form, skillId: event.target.value, skillName: selected?.name || "" });
     }}>
       <option value="">General (No specific skill)</option>
-      {skillsList.map((item: any) => {
-        const id = item.skillId || item.id;
-        return <option value={id} key={id}>{item.name} ({item.level} · Claimed {item.rating ?? "?"}/10)</option>;
+      {skillsList.map((item) => {
+        const id = "skillId" in item ? item.skillId : item.id;
+        return <option value={id} key={id}>{item.name} ({item.level} · Claimed {"rating" in item ? item.rating : "?"}/10)</option>;
       })}
     </select>
   </label>}

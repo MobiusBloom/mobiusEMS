@@ -158,7 +158,7 @@ export const OrgHierarchyPage = () => {
         map.set(mgrId, existing);
       }
     }
-    for (const [_, list] of map.entries()) {
+    for (const list of map.values()) {
       list.sort((a, b) => (a.seniorityRank || 99) - (b.seniorityRank || 99));
     }
     return map;
@@ -299,10 +299,10 @@ export const OrgHierarchyPage = () => {
         text: `Hierarchy successfully structured! Updated ${res.updatedCount} reporting lines under ${res.topExecutiveName || "CEO"} (${res.topExecutiveTitle || "Executive Leadership"}).`,
       });
       setTimeout(() => setAutoStructureMsg(null), 8000);
-    } catch (err: any) {
+    } catch (err) {
       setAutoStructureMsg({
         type: "error",
-        text: err?.response?.data?.message || err?.message || "Failed to auto-structure hierarchy.",
+        text: (err instanceof Error ? err.message : "") || "Failed to auto-structure hierarchy.",
       });
     } finally {
       setIsAutoStructuring(false);
@@ -324,10 +324,10 @@ export const OrgHierarchyPage = () => {
         text: "Reporting manager updated and saved to company database.",
       });
       setTimeout(() => setManagerActionMsg(null), 6000);
-    } catch (err: any) {
+    } catch (err) {
       setManagerActionMsg({
         type: "error",
-        text: err?.response?.data?.message || err?.message || "Failed to update reporting manager.",
+        text: (err instanceof Error ? err.message : "") || "Failed to update reporting manager.",
       });
     } finally {
       setIsSavingManager(false);
@@ -795,7 +795,7 @@ export const OrgHierarchyPage = () => {
             <div className="p-4 sm:p-6 space-y-6">
               <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
                 {departments.map((dept) => {
-                  const deptTeams = teams.filter((t) => (t.department as any)?._id === dept._id);
+                  const deptTeams = teams.filter((t) => t.department?._id === dept._id);
                   const deptEmployees = employees.filter((e) => e.department?._id === dept._id);
 
                   return (

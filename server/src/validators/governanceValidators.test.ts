@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { APPLICANT_STAGES, type ApplicantStage } from "@mobius-ems/shared";
-import { jobDescriptionSchema, resumeScreeningSchema, documentExpirationSchema } from "./governanceValidators.js";
+import { jobDescriptionSchema, documentExpirationSchema } from "./governanceValidators.js";
 
 test("APPLICANT_STAGES defines the complete recruitment funnel pipeline", () => {
   const expected: readonly ApplicantStage[] = [

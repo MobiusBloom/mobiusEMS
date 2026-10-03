@@ -20,7 +20,6 @@ export const evaluateTaskSkillImpact = async (taskId: string | Types.ObjectId) =
     .sort({ updatedAt: -1 })
     .lean();
 
-  let totalClaimed = 0;
   let totalDemonstrated = 0;
   let testedCount = 0;
 
@@ -34,7 +33,7 @@ export const evaluateTaskSkillImpact = async (taskId: string | Types.ObjectId) =
         description: score.description,
         rating: score.rating,
       },
-      allTasks as any
+      allTasks
     );
 
     score.demonstratedRating = evidence.demonstratedRating;
@@ -42,7 +41,6 @@ export const evaluateTaskSkillImpact = async (taskId: string | Types.ObjectId) =
     score.credibilityStatus = evidence.credibilityStatus;
     score.tasksEvaluatedCount = evidence.completedTasks;
 
-    totalClaimed += score.rating;
     if (evidence.credibilityStatus !== "UNTESTED") {
       totalDemonstrated += evidence.demonstratedRating;
       testedCount += 1;
@@ -69,7 +67,7 @@ export const evaluateTaskSkillImpact = async (taskId: string | Types.ObjectId) =
 
 export const recalculateAllRanks = async () => {
   const allAssessments = await RoleSkillAssessment.find({})
-    .populate<{ employee: { _id: Types.ObjectId; department: Types.ObjectId; firstName: string; lastName: string; employeeId: string; designation: any } }>(
+    .populate<{ employee: { _id: Types.ObjectId; department: Types.ObjectId; firstName: string; lastName: string; employeeId: string; designation?: Types.ObjectId } }>(
       "employee",
       "firstName lastName employeeId department designation"
     )
@@ -115,12 +113,12 @@ export const getSkillCredibilityLeaderboard = async (limit = 20): Promise<Employ
     .limit(limit)
     .lean();
 
-  return assessments.map((a: any) => {
-    const tested = (a.scores || []).filter((s: any) => s.tasksEvaluatedCount && s.tasksEvaluatedCount > 0);
+  return assessments.map((a) => {
+    const tested = (a.scores || []).filter((s) => s.tasksEvaluatedCount && s.tasksEvaluatedCount > 0);
     const avgVelocity = tested.length > 0
-      ? Number((tested.reduce((sum: number, s: any) => sum + (s.velocityRatio || 1), 0) / tested.length).toFixed(2))
+      ? Number((tested.reduce((sum: number, s) => sum + (s.velocityRatio || 1), 0) / tested.length).toFixed(2))
       : 1.0;
-    const completedTasks = tested.reduce((sum: number, s: any) => sum + (s.tasksEvaluatedCount || 0), 0);
+    const completedTasks = tested.reduce((sum: number, s) => sum + (s.tasksEvaluatedCount || 0), 0);
 
     return {
       employeeId: a.employee?.employeeId || "N/A",

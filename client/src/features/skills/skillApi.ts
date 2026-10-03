@@ -30,6 +30,7 @@ export interface Assessment {
   passingScore: number;
   timeLimitMinutes: number;
   assignedEmployee?: {
+    user?: string | { _id: string };
     _id: string;
     firstName: string;
     lastName: string;

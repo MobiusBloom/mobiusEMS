@@ -87,7 +87,7 @@ export const getDailySalesCockpit = async (viewer: SessionUser, now = new Date()
   const probabilityBreakdown = { high: opportunities.filter((item) => item.probability >= 70).length, medium: opportunities.filter((item) => item.probability >= 40 && item.probability < 70).length, low: opportunities.filter((item) => item.probability < 40).length };
   return {
     generatedAt: now.toISOString(),
-    nextBestActions: rankNextActions(actions).map(({ priorityScore: _priorityScore, conversionProbability: _conversionProbability, ...action }) => action),
+    nextBestActions: rankNextActions(actions).map(item => Object.fromEntries(Object.entries(item).filter(([key]) => !["priorityScore", "conversionProbability"].includes(key)))),
     highPotentialClients: opportunities.filter((item) => item.probability >= 70).sort((a, b) => b.estimatedValue * b.probability - a.estimatedValue * a.probability).slice(0, 5).map((item) => ({ id: idOf(item._id), name: item.name, value: item.estimatedValue, probability: item.probability, stage: item.stage, weightedValue: item.estimatedValue * item.probability / 100 })),
     probabilityBreakdown,
     slaBreaches: actions.filter((item) => item.id.startsWith("sla:")).length,
